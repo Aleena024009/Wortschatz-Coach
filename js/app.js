@@ -3,7 +3,7 @@ import { respell } from './respell.js';
 import * as speech from './speech.js';
 import * as audio from './audio.js';
 import * as db from './db.js';
-import { translate } from './translate.js';
+import { translate, toEnglish } from './translate.js';
 import * as hd from './hd-voice.js';
 import * as cloud from './cloud.js';
 import { mergeWords, isNewer } from './sync.js';
@@ -610,13 +610,54 @@ async function runLookups() {
   lookingUp = false;
 }
 
-function renameTopic(old) {
-  const name = (prompt(`New name for the topic “${old}”:`, old) || '').trim().slice(0, 80);
+// Asks for a topic or sub-topic name as two parts, German and English, and joins them
+// the way list headings are written ("Numbers – Die Zahlen"). Resolves to the name, or null.
+function nameDialog(title, old) {
+  return new Promise((resolve) => {
+    const parts = old.split(/\s+[-–—]\s+/);
+    const oldGerman = topicGerman(old);
+    const german = h('input', { value: oldGerman, lang: 'de', required: true, placeholder: 'Die Zahlen' });
+    const english = h('input', { value: parts.length > 1 ? parts.filter((p) => p.trim() !== oldGerman).join(' – ') : oldGerman ? '' : old, placeholder: 'Numbers' });
+    const field = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
+    const close = (value) => { dialog.close(); dialog.remove(); resolve(value); };
+    const dialog = h('dialog', { class: 'name-dialog', oncancel: () => close(null) },
+      h('form', {
+        onsubmit: (e) => {
+          e.preventDefault();
+          const de = german.value.trim();
+          const en = english.value.trim();
+          if (!de) return;
+          const name = !en ? de : settings.listOrder === 'en-de' ? `${en} – ${de}` : `${de} – ${en}`;
+          close(name.slice(0, 80));
+        },
+      },
+      h('h2', {}, title),
+      field('German name (the title, and what the speaker button says)', german),
+      field('English name (shown under it)', english),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn primary', type: 'submit' }, 'Save'),
+        h('button', { class: 'btn', type: 'button', onclick: () => close(null) }, 'Cancel'))));
+    document.body.append(dialog);
+    dialog.showModal();
+    german.focus();
+    // Suggest whichever half is missing.
+    if (!english.value && german.value) {
+      toEnglish(german.value).then((en) => { if (en && !english.value) english.value = en; }).catch(() => {});
+    } else if (!german.value && english.value) {
+      translate(english.value).then(({ results }) => {
+        if (results[0] && !german.value) german.value = translationLabel(results[0]);
+      }).catch(() => {});
+    }
+  });
+}
+
+async function renameTopic(old) {
+  const name = await nameDialog('Rename topic', old);
   if (!name || name === old) return;
   const words = state.words.filter((w) => (w.topic || '') === old);
   words.forEach((w) => { w.topic = name; });
-  if (settings.topic === old) {
-    settings.topic = name;
+  if (settings.topic === old || settings.topic.startsWith(old + SEP)) {
+    settings.topic = name + settings.topic.slice(old.length);
     saveSettings();
   }
   if (state.openTopic === old) state.openTopic = name;
@@ -951,7 +992,8 @@ function setTheme(choice) {
 // The German part of a topic title: "Time Expressions – Zeitangaben" -> "Zeitangaben".
 function topicGerman(topic) {
   const parts = topic.split(/\s+[-–—]\s+/);
-  if (parts.length < 2) return '';
+  // A name without a dash counts as German when it looks German ("Die Zahlen", "Begrüßungen").
+  if (parts.length < 2) return /^(der|die|das|den|dem|ein|eine)\s|[äöüßÄÖÜ]/i.test(topic) ? topic.trim() : '';
   return (settings.listOrder === 'en-de' ? parts.at(-1) : parts[0]).trim();
 }
 
@@ -998,9 +1040,11 @@ function titlePair(name, tag, fallback) {
   if (!name) return h('div', { class: 'title-pair' }, h(tag, {}, fallback));
   const german = topicGerman(name);
   const english = german ? name.split(/\s+[-–—]\s+/).filter((p) => p.trim() !== german).join(' – ') : '';
+  const sound = german ? respell(german) : '';
   return h('div', { class: 'title-pair' },
     h(tag, { lang: german ? 'de' : null }, german || name),
-    english ? h('span', { class: 'sub' }, english) : null);
+    english ? h('span', { class: 'sub' }, english) : null,
+    sound ? h('span', { class: 'respell', title: 'Say it like this. Capitals = stressed syllable.' }, sound) : null);
 }
 
 // Cards grouped under topic headings (used for search results).
@@ -1042,8 +1086,8 @@ function topicTile(topic, count) {
   return folderTile(topic, `${subs ? `${plural(subs, 'sub-topic')} · ` : ''}${plural(count, 'word')}`, () => openTopic(topic), state.organise);
 }
 
-function renameSection(topic, old) {
-  const name = (prompt(`New name for the sub-topic “${old}”:`, old) || '').trim().slice(0, 80);
+async function renameSection(topic, old) {
+  const name = await nameDialog('Rename sub-topic', old);
   if (!name || name === old) return;
   const words = state.words.filter((w) => (w.topic || '') === topic && w.subtopic === old);
   words.forEach((w) => { w.subtopic = name; });
@@ -1109,9 +1153,13 @@ function menuSelect(label, choices, onpick) {
 
 // The bar at the top of an open topic or sub-topic: back, title, play, Practise and More.
 function renderFolderBar({ name, fallback, parent, count, back, practise, menu }) {
+  const backBtn = $('words-back');
+  backBtn.hidden = false;
+  backBtn.onclick = back;
+  backBtn.title = parent ? `Back to ${parent}` : 'Back to all topics';
+  backBtn.setAttribute('aria-label', backBtn.title);
   $('topic-bar').hidden = false;
   $('topic-bar').replaceChildren(...[
-    h('button', { class: 'icon-btn back', icon: 'back', 'aria-label': parent ? `Back to ${parent}` : 'All topics', title: parent ? `Back to ${parent}` : 'All topics', onclick: back }),
     h('div', { class: 'topic-title' },
       parent ? h('button', { class: 'crumb', onclick: back }, topicGerman(parent) || parent) : null,
       titlePair(name, 'h2', fallback),
@@ -1207,6 +1255,7 @@ function renderWords() {
   renderCatTabs($('cat-tabs'));
   $('examples-note').hidden = state.words.length > 0;
   $('topic-bar').hidden = true;
+  $('words-back').hidden = true;
   const list = $('word-list');
   const base = inCategory(visibleSource());
   const q = state.search.trim();
@@ -1272,7 +1321,7 @@ function renderTranslate() {
   select.replaceChildren(...categoryNames().map((n) => h('option', { value: n, selected: n === settings.addCategory }, n)));
 }
 
-// The Translate page: English word or sentence in, German out, with ▶ and "+ Add".
+// The Translate page: English word or sentence in, German out, with play and "+ Add".
 async function translateBox(e) {
   e.preventDefault();
   const english = $('tr-input').value.trim();

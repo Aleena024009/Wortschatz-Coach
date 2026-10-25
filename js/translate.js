@@ -82,3 +82,12 @@ export async function translate(english) {
   }
   return { results: await fromMyMemory(text), source: 'machine' };
 }
+
+// German → English for a short name (used to suggest the English name of a topic).
+export async function toEnglish(german) {
+  const params = new URLSearchParams({ langpair: 'de|en', q: german });
+  const res = await fetch(`${MYMEMORY}?${params}`);
+  if (!res.ok) throw new Error(`Translation service HTTP ${res.status}`);
+  const text = ((await res.json()).responseData?.translatedText || '').trim();
+  return text.toLowerCase() === german.trim().toLowerCase() || /[<>{}]/.test(text) ? '' : text;
+}
