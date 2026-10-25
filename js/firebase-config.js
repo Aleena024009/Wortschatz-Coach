@@ -12,4 +12,11 @@
 //   appId: '1:1234567890:web:abc123',
 // };
 
-export const firebaseConfig = null;
+export const firebaseConfig = {
+  apiKey: 'AIzaSyB5zoI8VPHBZ2953VWQx0enJ-Gcx2S7Y8I',
+  authDomain: 'wortschatz-coach.firebaseapp.com',
+  projectId: 'wortschatz-coach',
+  storageBucket: 'wortschatz-coach.firebasestorage.app',
+  messagingSenderId: '49853983137',
+  appId: '1:49853983137:web:840c4c886aeab2f42f83e0',
+};
