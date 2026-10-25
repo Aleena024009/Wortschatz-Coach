@@ -12,6 +12,12 @@ export function germanVoices() {
     .sort((a, b) => (a.lang === 'de-DE' ? -1 : 0) - (b.lang === 'de-DE' ? -1 : 0) || a.name.localeCompare(b.name));
 }
 
+// Brave and some Linux browsers expose speechSynthesis but have no voices at all,
+// so speaking stays silent.
+export function hasAnyVoice() {
+  return !!synth && synth.getVoices().length > 0;
+}
+
 export function onVoicesChanged(fn) {
   if (!synth) return;
   synth.addEventListener?.('voiceschanged', fn);

@@ -40,6 +40,11 @@ test('known custom category without # and trailing tag', () => {
   assert.deepEqual(words.map((w) => w.level), ['Travel', 'Travel']);
 });
 
+test('words before any level line go to the selected category', () => {
+  const { words } = parseWordList('der Hund - dog\nB1\ndie Tür - door', ['A1', 'A2', 'B1', 'B2'], 'A2');
+  assert.deepEqual(words.map((w) => w.level), ['A2', 'B1']);
+});
+
 test('non-level brackets stay part of the meaning', () => {
   const { words } = parseWordList('na ja - well (informal)');
   assert.equal(words[0].english, 'well (informal)');

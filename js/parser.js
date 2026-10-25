@@ -34,13 +34,14 @@ export function matchCategory(name, categories) {
   return categories.find((c) => c.toLowerCase() === n) || '';
 }
 
-// Returns { words, unparsed, newCategories }. `categories` is the list of existing category names.
-export function parseWordList(text, categories = []) {
+// Returns { words, unparsed, newCategories }. `categories` is the list of existing category names;
+// words before any level line go to `defaultLevel`.
+export function parseWordList(text, categories = [], defaultLevel = '') {
   const words = [];
   const unparsed = [];
   const known = [...categories];
   const newCategories = [];
-  let level = '';
+  let level = defaultLevel;
 
   const useCategory = (name) => {
     if (!known.some((c) => c.toLowerCase() === name.toLowerCase())) {

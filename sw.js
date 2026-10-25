@@ -1,13 +1,14 @@
 // Offline support: the app shell is cached on install, then served cache-first
 // while a fresh copy is fetched in the background (stale-while-revalidate).
 // Bump VERSION whenever you change a file so phones pick up the new version.
-const VERSION = 'wortschatz-v1';
+const VERSION = 'wortschatz-v2';
 const SHELL = [
   './',
   'index.html',
   'styles.css',
   'manifest.json',
   'js/app.js',
+  'js/audio.js',
   'js/db.js',
   'js/parser.js',
   'js/respell.js',

@@ -6,6 +6,8 @@ Plain HTML/CSS/JS. There's no build step and no framework.
 
 ## Features
 
+The app has four sections: **Words** (your list, filtered by category, with search), **Add** (pick a category, then add one word or paste a list), **Practice** (flashcards) and **Settings**. On phones these are a bottom bar; on PC they're tabs at the top.
+
 - **Word list**: paste or upload a `.txt` file, one word per line, German first:
   ```
   A1
@@ -22,18 +24,19 @@ Plain HTML/CSS/JS. There's no build step and no framework.
   - `der/die/das` is detected and shown smaller before the noun.
   - Optional example sentence after ` | `.
   - Words already in your list are skipped.
-- **Categories**: the app starts with A1, A2, B1 and B2. Add more (C1, C2, "Travel", anything) under *Categories & backup*, or with a `# Name` line in a list. Tap a word's coloured badge to move it to another category. Each category has its own colour and a filter chip with a count.
-- **Speech**: uses the browser's built-in `speechSynthesis` (`de-DE`). It's free, runs on your device and doesn't send anything to a server. Choose the German voice and the speed (Slow 0.6 / Normal 0.85 / Fast 1.0). "Read text aloud" reads your whole pasted text and has a Stop button.
+- **Categories**: the app starts with A1, A2, B1 and B2. On the **Add** screen you pick the category first, and new words go there. Add more categories (C1, C2, "Travel", anything) with **+ New**, in Settings, or with a `# Name` line in a list. Tap a word's coloured badge to move it to another category. Each category has its own colour and a filter chip with a count.
+- **Pronunciation**: the speaker button plays a **real recording by a native speaker** from Wiktionary / Wikimedia Commons (free, no key, needs internet). If a word has no recording, it uses the browser's built-in German voice (`speechSynthesis`, `de-DE`), which is free and runs on your device. Example sentences and "Read text aloud" always use the device voice. You can switch to the device voice for everything in Settings, and choose the voice and speed (Slow / Normal / Fast).
+  - **Brave and Firefox on Linux usually have no voices at all.** Words still play recordings, but for sentences use Chrome or Edge on PC.
 - **Respelling**: a rule-based guess, marked with **≈**. It handles most everyday words but can be wrong for compounds and loanwords. The optional AI helper replaces it with a checked respelling and IPA.
 - **Flashcards**: they follow the selected category, with Listen, Show answer, Back, Next and Shuffle.
-- **Local database**: words, categories and your unsent text are stored in **IndexedDB** on your device and survive reloads and restarts. Use *Export backup* / *Import backup* (JSON) to move your list between phone and PC, or to keep a safe copy. Clearing the browser's site data deletes the list, so export now and then.
-- **PWA**: works offline after the first visit and can be installed from the browser.
+- **Local database**: words, categories and your unsent text are stored in **IndexedDB** on your device and survive reloads and restarts. Use *Settings → Export backup / Import backup* (JSON) to move your list between phone and PC, or to keep a safe copy. Clearing the browser's site data deletes the list, so export now and then.
+- **PWA**: works offline after the first visit (except recordings, which need internet) and can be installed from the browser.
 
 > **If words sound English:** your device has no German voice installed.
 > **Android:** Settings → Text-to-speech output → Speech services by Google → Install voice data → German (Deutsch).
 > **iPhone/iPad:** Settings → Accessibility → Spoken Content → Voices → German.
 > **Windows:** Settings → Time & language → Speech → Add voices → German.
-> Then reload the app and pick the voice under *Voice & speed*.
+> Then reload the app and pick the voice in *Settings → Pronunciation*.
 
 ## Run it locally
 
@@ -54,7 +57,7 @@ Run the parser tests with `npm test` (Node 20+).
 ## Deploy for free on GitHub Pages (HTTPS, installable)
 
 1. Push this repository to GitHub (it's already set up as `Aleena24/Wortschatz-Coach`).
-2. On GitHub: **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: `main`, folder `/ (root)` → Save**.
+2. On GitHub (already done for this repo): **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: `main`, folder `/ (root)` → Save**.
 3. After about a minute the app is live at **https://aleena24.github.io/Wortschatz-Coach/**.
 
 All paths are relative, so the `/Wortschatz-Coach/` sub-folder works as it is.
@@ -109,6 +112,7 @@ To try the AI part locally: `npm install`, put `ANTHROPIC_API_KEY=sk-ant-…` in
 | [js/parser.js](js/parser.js) | Word-list parser |
 | [js/respell.js](js/respell.js) | Rule-based English-style respelling |
 | [js/speech.js](js/speech.js) | Text-to-speech wrapper |
+| [js/audio.js](js/audio.js) | Native-speaker recordings from Wiktionary |
 | [sw.js](sw.js), [manifest.json](manifest.json), [icons/](icons/) | PWA: offline cache, install metadata, icons |
 | [api/enrich.mjs](api/enrich.mjs), [vercel.json](vercel.json) | Optional AI serverless function |
 | [tests/](tests/) | Parser and respelling tests (`npm test`) |
