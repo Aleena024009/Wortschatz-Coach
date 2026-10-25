@@ -151,6 +151,7 @@ const rateFor = () => RECORDING_RATE[settings.rate] || 1;
 // Shows under a word where the sound you just heard came from.
 function showSource(el, source) {
   if (!el) return;
+  el.className = 'source';
   el.replaceChildren(source.href
     ? h('a', { href: source.href, target: '_blank', rel: 'noopener' }, source.label)
     : source.label);
@@ -447,7 +448,64 @@ function playButton(w, sourceEl) {
   return btn;
 }
 
-const sourceLine = () => h('div', { class: 'source', hidden: true, 'aria-live': 'polite' });
+const computerVoiceReady = () => state.hd.ready || hasGermanVoice();
+
+// What will play for this word, shown on the card before you press play.
+function availability(w) {
+  const native = { kind: 'native', text: '🎙 Native speaker recording' };
+  const computer = { kind: 'computer', text: state.hd.ready ? '🤖 Computer voice (Thorsten)' : `🤖 Browser voice (${browserVoiceName()})` };
+  if (w.audio && (settings.source === 'recording' || !computerVoiceReady())) return native;
+  if (computerVoiceReady()) return computer;
+  if ((w.audio === undefined || (!w.audio && w.audioV !== AUDIO_LOOKUP_VERSION)) && navigator.onLine) return { kind: 'checking', text: 'Checking for a recording…' };
+  if (!navigator.onLine && w.audio) return { kind: 'none', text: '🔇 Offline: recordings need internet' };
+  return { kind: 'none', text: '🔇 No voice for this word yet' };
+}
+
+function renderAvailability(el, w) {
+  const a = availability(w);
+  el.className = `source avail ${a.kind}`;
+  el.hidden = false;
+  el.replaceChildren(a.text);
+  if (a.kind === 'none') {
+    el.append(' · ', h('button', { class: 'link-btn', onclick: () => { setView('settings'); downloadHd(); } }, 'Get free voice'));
+  }
+  el.closest('.card, .flashcard')?.querySelector('.icon-btn.play')?.classList.toggle('muted', a.kind === 'none');
+  if (a.kind === 'checking') queueLookup(w);
+}
+
+const sourceLine = (w) => {
+  const el = h('div', { class: 'source', 'aria-live': 'polite', 'data-id': w.id });
+  queueMicrotask(() => renderAvailability(el, w));
+  return el;
+};
+
+// Looks up recordings in the background, one word at a time, so each card can say
+// whether a native-speaker recording exists.
+const lookupQueue = [];
+let lookingUp = false;
+function queueLookup(w) {
+  if (!lookupQueue.includes(w)) lookupQueue.push(w);
+  if (!lookingUp) runLookups();
+}
+async function runLookups() {
+  lookingUp = true;
+  while (lookupQueue.length && navigator.onLine) {
+    const w = lookupQueue.shift();
+    if (w.audio || (w.audio === '' && w.audioV === AUDIO_LOOKUP_VERSION)) continue;
+    try {
+      w.audio = await audio.findRecording(fullGerman(w));
+      w.audioV = AUDIO_LOOKUP_VERSION;
+      if (!w.id.startsWith('ex')) persist(db.putWords([w]));
+    } catch {
+      break; // offline or blocked; try again later
+    }
+    document.querySelectorAll(`.source[data-id="${CSS.escape(w.id)}"]`).forEach((el) => {
+      if (el.classList.contains('avail')) renderAvailability(el, w);
+    });
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  lookingUp = false;
+}
 
 function levelSelect(w) {
   const names = categoryNames();
@@ -467,7 +525,7 @@ function levelSelect(w) {
 }
 
 function wordCard(w, isExample) {
-  const source = sourceLine();
+  const source = sourceLine(w);
   return h('li', { class: `card ${colorClass(w.level)}${isExample ? ' example' : ''}` },
     h('div', { class: 'card-head' },
       h('div', { class: 'text' },
@@ -532,7 +590,8 @@ function renderVoiceBanner() {
 let lastPercent = -1;
 function renderVoiceUi() {
   if (state.view === 'settings') renderHdBox();
-  if (state.view === 'words') renderVoiceBanner();
+  if (state.view === 'words' && state.hd.progress === null) renderWords();
+  else if (state.view === 'words') renderVoiceBanner();
 }
 
 async function downloadHd() {
@@ -893,7 +952,7 @@ function renderPractice() {
     el.replaceChildren(h('p', { class: 'empty' }, 'No words in this category yet.'));
     return;
   }
-  const source = sourceLine();
+  const source = sourceLine(w);
   el.replaceChildren(
     h('div', { class: 'progress' }, `${index + 1} / ${order.length}${showingExamples() ? ' · Examples' : ''}`),
     h('span', { class: `badge ${colorClass(w.level)}` }, w.level || 'No level'),
