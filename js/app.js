@@ -18,15 +18,6 @@ const AUDIO_LOOKUP_VERSION = 2;
 // Recordings are spoken at natural speed, so "Normal" plays them unchanged.
 const RECORDING_RATE = { 0.6: 0.75, 0.85: 1, 1: 1.15 };
 
-const EXAMPLES = [
-  { id: 'ex1', article: 'die', german: 'Schwester', english: 'sister', level: 'A1', pos: 'noun', ipa: 'ˈʃvɛstɐ', respelling: 'SHVES-tuh', example: 'Meine Schwester wohnt in Berlin.' },
-  { id: 'ex2', article: '', german: 'gehen', english: 'to go', level: 'A1', pos: 'verb', ipa: 'ˈɡeːən', respelling: 'GAY-un', example: 'Wir gehen heute ins Kino.' },
-  { id: 'ex3', article: 'das', german: 'Frühstück', english: 'breakfast', level: 'A1', pos: 'noun', ipa: 'ˈfʁyːʃtʏk', respelling: 'FREW-shtewk', example: 'Das Frühstück ist fertig.' },
-  { id: 'ex4', article: 'die', german: 'Erfahrung', english: 'experience', level: 'A2', pos: 'noun', ipa: 'ɛɐ̯ˈfaːʁʊŋ', respelling: 'air-FAH-roong', example: 'Das war eine gute Erfahrung.' },
-  { id: 'ex5', article: '', german: 'sich beschweren', english: 'to complain', level: 'B1', pos: 'verb', ipa: 'zɪç bəˈʃveːʁən', respelling: 'zikh buh-SHVAY-run', example: 'Er beschwert sich über den Lärm.' },
-  { id: 'ex6', article: 'die', german: 'Umwelt', english: 'environment', level: 'B2', pos: 'noun', ipa: 'ˈʊmvɛlt', respelling: 'OOM-velt', example: 'Wir müssen die Umwelt schützen.' },
-];
-
 const ICONS = {
   speaker: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/></svg>',
@@ -263,7 +254,7 @@ async function playRecording(w, btn, sourceEl) {
       w.audio = await audio.findRecording(fullGerman(w));
       w.audioV = AUDIO_LOOKUP_VERSION;
       // Only stored on this device: it is just a lookup cache, not your data.
-      if (!w.id.startsWith('ex')) persist(db.putWords([w]));
+      persist(db.putWords([w]));
     } catch {
       /* lookup failed (network); try again next time */
     }
@@ -377,8 +368,7 @@ function deleteCategory(name) {
 
 // ---------- filtering ----------
 
-const showingExamples = () => state.words.length === 0;
-const visibleSource = () => (showingExamples() ? EXAMPLES : state.words);
+const visibleSource = () => state.words;
 
 function inCategory(list) {
   if (settings.filter === 'all') return list;
@@ -495,7 +485,7 @@ async function runLookups() {
     try {
       w.audio = await audio.findRecording(fullGerman(w));
       w.audioV = AUDIO_LOOKUP_VERSION;
-      if (!w.id.startsWith('ex')) persist(db.putWords([w]));
+      persist(db.putWords([w]));
     } catch {
       break; // offline or blocked; try again later
     }
@@ -524,9 +514,9 @@ function levelSelect(w) {
   h('option', { value: '', selected: !w.level }, 'No level'));
 }
 
-function wordCard(w, isExample) {
+function wordCard(w) {
   const source = sourceLine(w);
-  return h('li', { class: `card ${colorClass(w.level)}${isExample ? ' example' : ''}` },
+  return h('li', { class: `card ${colorClass(w.level)}` },
     h('div', { class: 'card-head' },
       h('div', { class: 'text' },
         h('div', { class: 'word', lang: 'de' }, w.article ? h('span', { class: 'article' }, w.article) : null, w.german),
@@ -538,13 +528,10 @@ function wordCard(w, isExample) {
     source,
     exampleRow(w, source),
     h('div', { class: 'card-foot' },
-      isExample
-        ? h('span', { class: `badge ${colorClass(w.level)}` }, w.level)
-        : levelSelect(w),
+      levelSelect(w),
       w.pos ? h('span', { class: 'pos' }, w.pos) : null,
-      isExample ? h('span', { class: 'tag' }, 'Example') : null,
       h('span', { class: 'spacer' }),
-      isExample ? null : h('button', { class: 'icon-btn small remove', icon: 'trash', 'aria-label': `Remove ${fullGerman(w)}`, onclick: () => removeWord(w.id) }),
+      h('button', { class: 'icon-btn small remove', icon: 'trash', 'aria-label': `Remove ${fullGerman(w)}`, onclick: () => removeWord(w.id) }),
     ),
   );
 }
@@ -764,11 +751,11 @@ function setTheme(choice) {
 function renderWords() {
   renderVoiceBanner();
   renderCatTabs($('cat-tabs'));
-  $('examples-note').hidden = !showingExamples();
+  $('examples-note').hidden = state.words.length > 0;
   const list = searched(inCategory(visibleSource()));
   const emptyText = state.search ? `No words match “${state.search}”.` : 'No words in this category yet.';
   $('word-list').replaceChildren(
-    ...(list.length ? list.map((w) => wordCard(w, showingExamples())) : [h('li', { class: 'empty' }, emptyText)]),
+    ...(list.length || !state.words.length ? list.map(wordCard) : [h('li', { class: 'empty' }, emptyText)]),
   );
 }
 
@@ -949,12 +936,12 @@ function renderPractice() {
   ['fc-prev', 'fc-next', 'fc-shuffle'].forEach((id) => { $(id).disabled = order.length < 2; });
   el.className = `flashcard ${w ? colorClass(w.level) : ''}`;
   if (!w) {
-    el.replaceChildren(h('p', { class: 'empty' }, 'No words in this category yet.'));
+    el.replaceChildren(h('p', { class: 'empty' }, state.words.length ? 'No words in this category yet.' : 'Add some words first, then practise them here.'));
     return;
   }
   const source = sourceLine(w);
   el.replaceChildren(
-    h('div', { class: 'progress' }, `${index + 1} / ${order.length}${showingExamples() ? ' · Examples' : ''}`),
+    h('div', { class: 'progress' }, `${index + 1} / ${order.length}`),
     h('span', { class: `badge ${colorClass(w.level)}` }, w.level || 'No level'),
     h('div', { class: 'word', lang: 'de' }, w.article ? h('span', { class: 'article' }, w.article) : null, w.german),
     playButton(w, source),
