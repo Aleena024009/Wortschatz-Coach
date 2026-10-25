@@ -3,7 +3,7 @@ import { respell } from './respell.js';
 import * as speech from './speech.js';
 import * as audio from './audio.js';
 import * as db from './db.js';
-import { translate, toEnglish } from './translate.js';
+import { translate, toEnglish, translateToEnglish } from './translate.js';
 import * as hd from './hd-voice.js';
 import * as cloud from './cloud.js';
 import { mergeWords, isNewer } from './sync.js';
@@ -53,7 +53,7 @@ function loadSettings() {
 }
 
 const settings = Object.assign(
-  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '', autoplay: true, shuffle: false, showAnswers: true },
+  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '', autoplay: true, shuffle: false, showAnswers: true, trDir: 'en-de' },
   loadSettings(),
 );
 const state = {
@@ -611,6 +611,36 @@ async function runLookups() {
   lookingUp = false;
 }
 
+// A centred pop-up. `build(close)` returns the content; close() removes it again.
+function openModal(build, onCancel = () => {}) {
+  const close = () => { dialog.close(); dialog.remove(); };
+  const dialog = h('dialog', { class: 'modal', oncancel: (e) => { e.preventDefault(); close(); onCancel(); } });
+  dialog.append(build(close));
+  document.body.append(dialog);
+  dialog.showModal();
+  return dialog;
+}
+
+// One-line text question in a pop-up (instead of the browser's prompt box). Resolves to the text, or null.
+function textDialog(title, label, placeholder = '') {
+  return new Promise((resolve) => {
+    const input = h('input', { required: true, placeholder });
+    openModal((close) => h('form', {
+      onsubmit: (e) => {
+        e.preventDefault();
+        close();
+        resolve(input.value.trim().slice(0, 80) || null);
+      },
+    },
+    h('h2', {}, title),
+    h('label', { class: 'field' }, h('span', {}, label), input),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn primary', type: 'submit' }, 'Save'),
+      h('button', { class: 'btn', type: 'button', onclick: () => { close(); resolve(null); } }, 'Cancel'))), () => resolve(null));
+    input.focus();
+  });
+}
+
 // Asks for a topic or sub-topic name as two parts, German and English, and joins them
 // the way list headings are written ("Numbers – Die Zahlen"). Resolves to the name, or null.
 function nameDialog(title, old) {
@@ -621,7 +651,7 @@ function nameDialog(title, old) {
     const english = h('input', { value: parts.length > 1 ? parts.filter((p) => p.trim() !== oldGerman).join(' – ') : oldGerman ? '' : old, placeholder: 'Numbers' });
     const field = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
     const close = (value) => { dialog.close(); dialog.remove(); resolve(value); };
-    const dialog = h('dialog', { class: 'name-dialog', oncancel: () => close(null) },
+    const dialog = h('dialog', { class: 'modal', oncancel: (e) => { e.preventDefault(); close(null); } },
       h('form', {
         onsubmit: (e) => {
           e.preventDefault();
@@ -669,7 +699,7 @@ async function renameTopic(old) {
 
 // Edit a word right on its card. Category, topic and section are changed here too,
 // so the card itself stays short.
-function editWord(w, card) {
+function editWord(w) {
   const field = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
   const german = h('input', { value: fullGerman(w), lang: 'de', required: true, autocapitalize: 'off', spellcheck: 'false' });
   const english = h('input', { value: w.english, required: true });
@@ -678,15 +708,15 @@ function editWord(w, card) {
   const level = h('select', {},
     ...[...names, ...(w.level && !names.includes(w.level) ? [w.level] : [])].map((n) => h('option', { value: n, selected: n === w.level }, n)),
     h('option', { value: '', selected: !w.level }, 'No category'));
-  const askNew = (select, kind, fallback) => {
+  const askNew = async (select, kind, fallback) => {
     if (select.value !== NEW_TOPIC) return;
-    const name = (prompt(`Name of the new ${kind}:`) || '').trim().slice(0, 80);
+    const name = await nameDialog(`New ${kind}`, '');
     if (!name) {
       select.value = fallback();
-      return;
+    } else {
+      select.insertBefore(h('option', { value: name }, name), select.lastChild);
+      select.value = name;
     }
-    select.insertBefore(h('option', { value: name }, name), select.lastChild);
-    select.value = name;
   };
   const topic = h('select', {},
     h('option', { value: '' }, 'No topic'),
@@ -703,13 +733,13 @@ function editWord(w, card) {
     sectionField.hidden = !topic.value;
   };
   const sectionField = field('Sub-topic', section);
-  topic.addEventListener('change', () => {
-    askNew(topic, 'topic', () => w.topic || '');
+  topic.addEventListener('change', async () => {
+    await askNew(topic, 'topic', () => w.topic || '');
     fillSections();
   });
   section.addEventListener('change', () => askNew(section, 'sub-topic', () => ''));
   fillSections();
-  const form = h('form', {
+  openModal((close) => h('form', {
     class: 'edit-form',
     onsubmit: (e) => {
       e.preventDefault();
@@ -729,10 +759,12 @@ function editWord(w, card) {
       w.subtopic = w.topic && section.value !== NEW_TOPIC ? section.value : '';
       ensureCategories([w.level].filter(Boolean));
       saveWords([w]);
+      close();
       refresh();
       toast(`Saved “${fullGerman(w)}”.`);
     },
   },
+  h('h2', {}, 'Edit word'),
   field('German (with der / die / das for nouns)', german),
   field('English', english),
   h('button', {
@@ -742,11 +774,9 @@ function editWord(w, card) {
   field('Example sentence (optional)', example),
   h('div', { class: 'edit-grid' }, field('Category', level), field('Topic', topic), sectionField),
   h('div', { class: 'row' },
-    h('button', { class: 'btn primary small', type: 'submit' }, 'Save'),
-    h('button', { class: 'btn small', type: 'button', onclick: () => refresh() }, 'Cancel'),
-  ));
-  card.replaceChildren(form);
-  card.classList.add('editing');
+    h('button', { class: 'btn primary', type: 'submit' }, 'Save'),
+    h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'),
+  )));
   german.focus();
 }
 
@@ -767,7 +797,7 @@ function wordCard(w) {
       h('div', { class: 'card-side' },
         playButton(w, null),
         h('div', { class: 'card-actions' },
-          h('button', { class: 'icon-btn small remove', icon: 'edit', 'aria-label': `Edit ${fullGerman(w)}`, title: 'Edit', onclick: () => editWord(w, card) }),
+          h('button', { class: 'icon-btn small remove', icon: 'edit', 'aria-label': `Edit ${fullGerman(w)}`, title: 'Edit', onclick: () => editWord(w) }),
           h('button', { class: 'icon-btn small remove', icon: 'trash', 'aria-label': `Remove ${fullGerman(w)}`, title: 'Remove', onclick: () => removeWord(w.id) }),
         ),
       ),
@@ -1243,9 +1273,9 @@ function renderOrganiseBar(names) {
       picked.length ? target : null,
       picked.length ? h('button', {
         class: 'btn small primary',
-        onclick: () => {
+        onclick: async () => {
           let parent = target.value;
-          if (parent === NEW_TOPIC) parent = (prompt('Name of the topic to put them in, e.g. German Numbers – Zahlen:') || '').trim().slice(0, 80);
+          if (parent === NEW_TOPIC) parent = await nameDialog('Topic to put them in', '');
           if (parent) moveTopicsInto(picked, parent);
         },
       }, 'Group') : null,
@@ -1323,38 +1353,50 @@ const translationLabel = (r) => (r.article ? `${r.article} ${r.german}` : r.germ
 function renderTranslate() {
   const select = $('tr-category');
   select.replaceChildren(...categoryNames().map((n) => h('option', { value: n, selected: n === settings.addCategory }, n)));
+  document.querySelectorAll('#tr-dir button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.dir === settings.trDir)));
+  $('tr-input').placeholder = settings.trDir === 'de-en' ? 'z. B. das Wochenende, oder: Bis morgen!' : 'e.g. the weekend, or: See you tomorrow!';
+  $('tr-input').lang = settings.trDir === 'de-en' ? 'de' : 'en';
 }
 
-// The Translate page: English word or sentence in, German out, with play and "+ Add".
+// The Translate page: a word or sentence in one language, the other language out,
+// with play (always the German) and "+ Add to my words".
 async function translateBox(e) {
   e.preventDefault();
-  const english = $('tr-input').value.trim();
-  if (!english) return;
+  const input = $('tr-input').value.trim();
+  if (!input) return;
+  const toEnglish = settings.trDir === 'de-en';
   const list = $('tr-results');
   $('tr-note').textContent = 'Translating…';
   list.replaceChildren();
   try {
-    const { results, source } = await translate(english);
-    $('tr-note').textContent = !results.length ? `No German translation found for “${english}”.`
+    // Each result is a German / English pair, whichever way you translated.
+    const { results, source } = toEnglish
+      ? await translateToEnglish(input)
+      : await translate(input).then(({ results: r, source: src }) => ({ source: src, results: r.map((x) => ({ ...x, english: input })) }));
+    $('tr-note').textContent = !results.length ? `No translation found for “${input}”.`
       : source === 'machine' ? 'Machine translation: usually right for sentences, but please check with your teacher.'
         : 'From Wiktionary (written by people). The first one is the most common meaning.';
     list.replaceChildren(...results.map((r) => {
-      const label = translationLabel(r);
-      const stand = { id: `tr:${label}`, article: r.article, german: r.german, english };
-      const btn = h('button', { class: 'icon-btn play small', icon: 'speaker', 'aria-label': `Say ${label}` });
-      btn.addEventListener('click', () => (label.split(/\s+/).length > 3 ? say(label) : playWord(stand, btn, null)));
+      const germanLabel = translationLabel(r);
+      const stand = { id: `tr:${germanLabel}`, article: r.article, german: r.german, english: r.english };
+      const btn = h('button', { class: 'icon-btn play small', icon: 'speaker', 'aria-label': `Say ${germanLabel}` });
+      btn.addEventListener('click', () => (germanLabel.split(/\s+/).length > 3 ? say(germanLabel) : playWord(stand, btn, null)));
       const add = h('button', {
         class: 'btn small',
         onclick: () => {
           const { added } = addWords([{
-            article: r.article, german: r.german, english, level: settings.addCategory,
-            pos: guessPos(r.article, r.german, english),
+            article: r.article, german: r.german, english: r.english, level: settings.addCategory,
+            pos: guessPos(r.article, r.german, r.english),
           }]);
           add.disabled = true;
           add.replaceChildren(icon('check'), added ? `Added to ${settings.addCategory || 'your words'}` : 'Already in your words');
         },
       }, '+ Add to my words');
-      return h('li', {}, h('span', { class: 'tr-german', lang: 'de' }, label), btn, add);
+      // German → English shows the English meaning big, with the German it belongs to under it.
+      const text = toEnglish
+        ? h('span', { class: 'tr-german' }, r.english, h('span', { class: 'tr-sub', lang: 'de' }, germanLabel))
+        : h('span', { class: 'tr-german', lang: 'de' }, germanLabel);
+      return h('li', {}, text, btn, add);
     }));
   } catch (err) {
     $('tr-note').textContent = '';
@@ -1381,8 +1423,8 @@ function renderAdd() {
     ),
     h('button', {
       class: 'cat-option new',
-      onclick: () => {
-        const name = addCategoryByName(prompt('Name of the new category (e.g. C1 or Travel):'));
+      onclick: async () => {
+        const name = addCategoryByName(await textDialog('New category', 'Name of the category', 'e.g. C1 or Travel'));
         if (name) {
           settings.addCategory = name;
           saveSettings();
@@ -1637,10 +1679,29 @@ function renderSettings() {
   $('storage-msg').textContent = state.user
     ? `${plural(state.words.length, 'word')} saved on this device and in your account.`
     : `${plural(state.words.length, 'word')} saved on this device${dbOk ? ' (IndexedDB)' : ''}. Clearing browser data deletes them, so sign in to sync or export a backup now and then.`;
+  renderStorage();
   renderSegmented();
   renderHdBox();
   renderSyncBox();
   applyTheme();
+}
+
+const formatBytes = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+
+// How much space the app takes in this browser: your words, the voice download, and the rest.
+async function renderStorage() {
+  const words = new Blob([JSON.stringify(state.words)]).size;
+  const parts = [`Your ${plural(state.words.length, 'word')}: ${formatBytes(words)}`];
+  try {
+    const { usage = 0, quota = 0, usageDetails } = await navigator.storage.estimate();
+    if (usageDetails?.caches !== undefined) {
+      parts.push(`Voice and offline app files: ${formatBytes(usageDetails.caches)}`);
+    }
+    parts.push(`In total: ${formatBytes(usage)} of the ${formatBytes(quota)} this browser allows`);
+  } catch {
+    /* storage estimate not supported */
+  }
+  $('storage-used').replaceChildren(...parts.map((t) => h('li', {}, t)));
 }
 
 function renderVoices() {
@@ -1935,6 +1996,14 @@ async function init() {
     saveSettings();
     autoPlay();
   });
+  document.querySelectorAll('#tr-dir button').forEach((b) => b.addEventListener('click', () => {
+    settings.trDir = b.dataset.dir;
+    saveSettings();
+    $('tr-results').replaceChildren();
+    $('tr-note').textContent = '';
+    renderTranslate();
+    $('tr-input').focus();
+  }));
   $('tr-category').addEventListener('change', (e) => {
     settings.addCategory = e.target.value;
     saveSettings();

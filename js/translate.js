@@ -48,20 +48,23 @@ async function fromWiktionary(english) {
   return results.slice(0, 6);
 }
 
-async function fromMyMemory(english) {
-  const params = new URLSearchParams({ langpair: 'en|de', q: english });
+async function fromMyMemory(english, langpair = 'en|de') {
+  const params = new URLSearchParams({ langpair, q: english });
   const res = await fetch(`${MYMEMORY}?${params}`);
   if (!res.ok) throw new Error(`Translation service HTTP ${res.status}`);
   const data = await res.json();
   const source = english.trim().toLowerCase();
-  // The service returns several suggestions of mixed quality; take the one most of them agree on.
+  // The service returns several suggestions of mixed quality. Stored translations of a *similar*
+  // sentence can be wrong ("…morgen nicht…"), so exact matches and its own machine translation
+  // count extra; otherwise the one most suggestions agree on wins.
   const votes = new Map();
-  for (const t of [data.responseData?.translatedText, ...(data.matches || []).map((m) => m.translation)]) {
-    const text = (t || '').trim();
+  const suggestions = [{ translation: data.responseData?.translatedText }, ...(data.matches || [])];
+  for (const m of suggestions) {
+    const text = (m.translation || '').trim();
     if (!text || text.toLowerCase() === source || /[<>{}]|^[A-Z]{2,}\)?$/.test(text)) continue;
     const key = text.toLowerCase().replace(/[.!?]+$/, '');
     const entry = votes.get(key) || { text, count: 0 };
-    entry.count++;
+    entry.count += 1 + (Number(m.match) >= 0.99 ? 3 : 0) + (m['created-by'] === 'MT!' ? 2 : 0);
     votes.set(key, entry);
   }
   return [...votes.values()]
@@ -90,4 +93,68 @@ export async function toEnglish(german) {
   if (!res.ok) throw new Error(`Translation service HTTP ${res.status}`);
   const text = ((await res.json()).responseData?.translatedText || '').trim();
   return text.toLowerCase() === german.trim().toLowerCase() || /[<>{}]/.test(text) ? '' : text;
+}
+
+// Templates in a Wiktionary definition line: {{l|en|day}} -> "day", labels like {{lb|de|colloquial}} dropped.
+function cleanDefinition(line) {
+  return cleanLinks(line
+    .replace(/\{\{(?:l|m|w)\|[^|}]*\|([^|}]+)[^}]*\}\}/g, '$1')
+    .replace(/\{\{(?:lb|lbl|q|qual|qualifier|gloss|gl|sense|tlb)\|[^}]*\}\}/g, '')
+    .replace(/\{\{[^}]*\}\}/g, '')
+    .replace(/<[^>]+>/g, ''))
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([;,.!?)])/g, '$1')
+    .replace(/^[\s;:,.]+|[\s;:,]+$/g, '');
+}
+
+async function germanFromWiktionary(german) {
+  const { article, german: term } = splitArticle(german.replace(/[.!?]+$/, '').trim());
+  if (!term || term.split(/\s+/).length > 4) return [];
+  // "sich beschweren" is listed under "beschweren".
+  const base = term.replace(/^sich\s+/i, '');
+  const variants = [...new Set([term, base, base[0].toUpperCase() + base.slice(1), base[0].toLowerCase() + base.slice(1)])];
+  // With "der/die/das" in front it is a noun, so try the capitalised page first.
+  if (article) variants.sort((a, b) => (b[0] === b[0].toUpperCase()) - (a[0] === a[0].toUpperCase()));
+  for (const page of variants) {
+    const text = await wikitext(page).catch(() => '');
+    const start = text.indexOf('==German==');
+    if (start < 0) continue;
+    const rest = text.slice(start + 10);
+    const end = rest.search(/\n==[^=]/);
+    const section = end < 0 ? rest : rest.slice(0, end);
+    const gender = (section.match(/\{\{de-noun\|([mfn])/) || [])[1];
+    const seen = new Set();
+    const results = [];
+    const lines = [...section.matchAll(/^#\s+(?![:*])(.+)$/gm)].map((m) => m[1]);
+    // For "sich …" the reflexive meanings come first.
+    if (term !== base) lines.sort((a, b) => /reflexive/.test(b) - /reflexive/.test(a));
+    for (const line of lines) {
+      const meaning = cleanDefinition(line);
+      const key = meaning.toLowerCase();
+      if (!meaning || meaning.length > 80 || seen.has(key)) continue;
+      seen.add(key);
+      results.push({ english: meaning, german: term === base ? page : term, article: article || (gender && page[0] === page[0].toUpperCase() ? ARTICLE_FOR[gender] : '') });
+    }
+    if (results.length) return results.slice(0, 6);
+  }
+  return [];
+}
+
+// German → English. Returns { results: [{ english, german, article }], source }.
+export async function translateToEnglish(german) {
+  const text = german.trim();
+  if (!text) return { results: [], source: '' };
+  try {
+    const results = await germanFromWiktionary(text);
+    if (results.length) return { results, source: 'wiktionary' };
+  } catch {
+    /* Wiktionary busy or offline: fall back to machine translation */
+  }
+  const { article, german: plain } = splitArticle(text);
+  // Drop suggestions that are just part of the German again, or far longer than it (unrelated sentences).
+  const machine = (await fromMyMemory(text, 'de|en')).filter((r) => {
+    const out = (r.article ? `${r.article} ${r.german}` : r.german).toLowerCase().replace(/[.!?]+$/, '');
+    return !text.toLowerCase().includes(out) && out.length <= text.length * 2.5 + 15;
+  });
+  return { results: machine.map((r) => ({ english: r.article ? `${r.article} ${r.german}` : r.german, german: plain, article })), source: 'machine' };
 }
