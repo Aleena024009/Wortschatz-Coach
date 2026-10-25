@@ -840,13 +840,21 @@ function renderAdd() {
 }
 
 function addWords(items) {
-  const existing = new Set(state.words.map((w) => normalizeKey(w.article, w.german, w.english)));
+  const byKey = new Map(state.words.map((w) => [normalizeKey(w.article, w.german, w.english), w]));
+  const existing = new Set(byKey.keys());
   const fresh = [];
+  const topicFilled = [];
   let duplicates = 0;
   const now = Date.now();
   for (const item of items) {
     const key = normalizeKey(item.article, item.german, item.english);
     if (!item.german || existing.has(key)) {
+      // Re-adding a word you already have gives it a topic if it had none.
+      const old = byKey.get(key);
+      if (old && item.topic && !old.topic) {
+        old.topic = item.topic;
+        topicFilled.push(old);
+      }
       duplicates++;
       continue;
     }
@@ -857,7 +865,7 @@ function addWords(items) {
   ensureCategories(fresh.map((w) => w.level).filter(Boolean));
   state.words.push(...fresh);
   sortWords();
-  saveWords(fresh);
+  saveWords([...fresh, ...topicFilled]);
   refresh();
   return { added: fresh.length, duplicates };
 }
