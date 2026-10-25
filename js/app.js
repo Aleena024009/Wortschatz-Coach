@@ -745,6 +745,7 @@ function editWord(w, card) {
     h('button', { class: 'btn small', type: 'button', onclick: () => refresh() }, 'Cancel'),
   ));
   card.replaceChildren(form);
+  card.classList.add('editing');
   german.focus();
 }
 
@@ -1076,9 +1077,11 @@ function folderTile(name, detail, open, picking) {
     onclick: choose,
     onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } },
   },
-  picking ? h('span', { class: 'tick', 'aria-hidden': 'true', icon: picked ? 'check' : null }) : h('span', { class: 'folder', icon: 'folder' }),
-  h('div', { class: 'tile-text' }, titlePair(name, 'h3', 'Other words'), h('span', { class: 'count' }, detail)),
-  picking ? null : topicPlayButton(name));
+  picking ? h('span', { class: 'tick', 'aria-hidden': 'true', icon: picked ? 'check' : null }) : null,
+  h('div', { class: 'tile-main' }, titlePair(name, 'h3', 'Other words')),
+  h('div', { class: 'tile-foot' },
+    h('span', { class: 'count' }, icon('folder'), detail),
+    picking ? null : topicPlayButton(name, true)));
 }
 
 function topicTile(topic, count) {
