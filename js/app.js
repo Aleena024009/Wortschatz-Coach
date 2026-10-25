@@ -45,7 +45,7 @@ function loadSettings() {
 }
 
 const settings = Object.assign(
-  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', addCategory: 'A1', aiEndpoint: '', aiPasscode: '' },
+  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '' },
   loadSettings(),
 );
 const state = {
@@ -178,6 +178,37 @@ async function speakText(text) {
   return null;
 }
 
+// A short tone, to check that this browser plays sound at all.
+function beep() {
+  const rate = 22050;
+  const samples = new Float32Array(rate * 0.6).map((_, i) => Math.sin((2 * Math.PI * 660 * i) / rate) * 0.5 * Math.min(1, (rate * 0.6 - i) / 2000));
+  const view = new DataView(new ArrayBuffer(44 + samples.length * 2));
+  const str = (o, t) => [...t].forEach((c, i) => view.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); str(8, 'WAVEfmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  str(36, 'data'); view.setUint32(40, samples.length * 2, true);
+  samples.forEach((x, i) => view.setInt16(44 + i * 2, x * 0x7fff, true));
+  return new Blob([view.buffer], { type: 'audio/wav' });
+}
+
+async function soundCheck() {
+  audio.unlock();
+  try {
+    await audio.play(beep());
+    toast('Did you hear a beep? If not, the sound is muted in your browser or computer (see the tips below).');
+  } catch (err) {
+    toast(`Your browser blocked the sound (${err.name}). Allow sound for this site and try again.`);
+  }
+}
+
+function soundBlockedHelp() {
+  toast('Your browser is not playing the sound. Check the tab is not muted, your volume is up, and sound/autoplay is allowed for this site (Brave: click the icon left of the address → Site settings → Sound / Autoplay → Allow).', 'Sound check', () => {
+    setView('settings');
+    soundCheck();
+  });
+}
+
 function offerVoiceDownload() {
   if (state.hd.ready || state.hd.progress !== null) {
     toast('Could not play this. Please try again.');
@@ -191,12 +222,14 @@ function offerVoiceDownload() {
 
 // Sentences: always a computer voice.
 async function say(text, sourceEl) {
+  audio.unlock();
   try {
     const source = await speakText(text);
     if (source) showSource(sourceEl, source);
     else offerVoiceDownload();
   } catch (err) {
-    toast(`Could not speak: ${err.message}`);
+    if (err.name === 'NotAllowedError') soundBlockedHelp();
+    else toast(`Could not speak: ${err.message}`);
   }
 }
 
@@ -220,7 +253,11 @@ async function playRecording(w, btn, sourceEl) {
     await audio.play(w.audio, rateFor());
     showSource(sourceEl, { label: 'Native speaker recording (Wiktionary) · who recorded it', href: audio.recordingPage(w.audio) });
     return true;
-  } catch {
+  } catch (err) {
+    if (err.name === 'NotAllowedError') {
+      soundBlockedHelp();
+      return true; // the browser blocks all sound; trying another source won't help
+    }
     return false;
   }
 }
@@ -232,8 +269,9 @@ async function playComputerVoice(w, btn, sourceEl) {
     if (source) showSource(sourceEl, source);
     return !!source;
   } catch (err) {
-    toast(`Could not speak: ${err.message}`);
-    return false;
+    if (err.name === 'NotAllowedError') soundBlockedHelp();
+    else toast(`Could not speak: ${err.message}`);
+    return true;
   } finally {
     btn?.classList.remove('loading');
   }
@@ -241,6 +279,7 @@ async function playComputerVoice(w, btn, sourceEl) {
 
 // Single words: your preferred source first, then the other one.
 async function playWord(w, btn, sourceEl) {
+  audio.unlock();
   const order = settings.source === 'recording' ? [playRecording, playComputerVoice] : [playComputerVoice, playRecording];
   for (const play of order) if (await play(w, btn, sourceEl)) return;
   offerVoiceDownload();
@@ -632,7 +671,7 @@ function applyTheme() {
   if (choice === 'light' || choice === 'dark') document.documentElement.dataset.theme = choice;
   else delete document.documentElement.dataset.theme;
   const dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', dark ? '#0f1513' : '#f4f2ec'));
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', dark ? '#0f1424' : '#fbf6ef'));
   document.querySelectorAll('#theme-group button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.themeChoice === choice)));
 }
 
@@ -683,6 +722,12 @@ function renderAdd() {
     }, '+ New'),
   );
   $('single-submit').textContent = settings.addCategory ? `Add to ${settings.addCategory}` : 'Add word';
+  const enFirst = settings.listOrder === 'en-de';
+  document.querySelectorAll('#order-group button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.order === settings.listOrder)));
+  $('order-example').textContent = enFirst ? 'dog - der Hund' : 'der Hund - dog';
+  $('draft').placeholder = enFirst
+    ? 'dog - der Hund\nto go - gehen\nexperience = die Erfahrung\nto complain - sich beschweren'
+    : 'der Hund - dog\ngehen - to go\ndie Erfahrung = experience\nsich beschweren - to complain';
   $('recent').replaceChildren(...state.recent.map((r) => h('li', {}, r)));
 }
 
@@ -735,12 +780,12 @@ function addSingle(e) {
     $('single-msg').textContent = `“${label}” is already in your list.`;
   }
   renderAdd();
-  germanIn.focus();
+  englishIn.focus();
 }
 
 function addFromDraft() {
   const text = $('draft').value;
-  const parsed = parseWordList(text, categoryNames(), settings.addCategory);
+  const parsed = parseWordList(text, categoryNames(), settings.addCategory, settings.listOrder);
   ensureCategories(parsed.newCategories);
   const { added, duplicates } = addWords(parsed.words);
   const parts = [`Added ${plural(added, 'word')}.`];
@@ -765,6 +810,7 @@ function stopReading() {
 }
 
 async function toggleReadAloud() {
+  audio.unlock();
   if (state.reading) {
     stopReading();
     return;
@@ -1034,7 +1080,7 @@ async function fillMissing() {
 async function extractWords() {
   if (state.busy) return;
   const msg = $('add-msg');
-  const text = parseWordList($('draft').value, categoryNames()).unparsed.join('\n');
+  const text = parseWordList($('draft').value, categoryNames(), '', settings.listOrder).unparsed.join('\n');
   const known = new Set(state.words.map((w) => w.german.toLowerCase()));
   const tokens = uniqueTextWords(text).filter((t) => !known.has(t.toLowerCase()));
   if (!tokens.length) {
@@ -1160,6 +1206,11 @@ async function init() {
   });
 
   $('single-form').addEventListener('submit', addSingle);
+  document.querySelectorAll('#order-group button').forEach((b) => b.addEventListener('click', () => {
+    settings.listOrder = b.dataset.order;
+    saveSettings();
+    renderAdd();
+  }));
   const draft = $('draft');
   draft.addEventListener('input', saveDraftSoon);
   $('add-btn').addEventListener('click', addFromDraft);
@@ -1190,6 +1241,8 @@ async function init() {
     saveSettings();
     speech.speak('Hallo! Wie geht es dir?', voiceOpts());
   });
+  $('sound-check').addEventListener('click', soundCheck);
+  audio.setStalledHandler(soundBlockedHelp);
   $('test-voice').addEventListener('click', () => speech.speak('Hallo! Wie geht es dir?', voiceOpts()));
   $('theme-btn').addEventListener('click', () => {
     const dark = document.documentElement.dataset.theme === 'dark'

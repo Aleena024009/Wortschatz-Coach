@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Wortschatz Coach</title>
   <meta name="description" content="Practise German pronunciation with your own vocabulary list.">
-  <meta name="theme-color" content="#1d6b57" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0f1513" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#fbf6ef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1424" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -15,6 +15,9 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="styles.css">
   <script>
     // Apply the saved light/dark choice before the page paints, to avoid a flash.
@@ -89,12 +92,12 @@
         <h2 class="step"><span>2</span>Add one word</h2>
         <form id="single-form" class="single-form" autocomplete="off">
           <label class="field">
-            <span>German (with der / die / das for nouns)</span>
-            <input id="in-german" lang="de" placeholder="der Hund" required autocapitalize="off" spellcheck="false">
-          </label>
-          <label class="field">
             <span>English</span>
             <input id="in-english" placeholder="dog" required>
+          </label>
+          <label class="field">
+            <span>German (with der / die / das for nouns)</span>
+            <input id="in-german" lang="de" placeholder="der Hund" required autocapitalize="off" spellcheck="false">
           </label>
           <label class="field">
             <span>Example sentence <em>(optional)</em></span>
@@ -108,10 +111,17 @@
 
       <div class="section">
         <h2 class="step"><span>3</span>…or add many at once</h2>
-        <p class="hint">One word per line, German first: <code>der Hund - dog</code>. Words go to the category above unless a line like <code>B1</code> says otherwise.</p>
+        <div class="field">
+          <span id="order-label">Each line is written as</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="order-label" id="order-group">
+            <button role="radio" data-order="en-de">English – German</button>
+            <button role="radio" data-order="de-en">German – English</button>
+          </div>
+        </div>
+        <p class="hint">One word per line, for example <code id="order-example">dog - der Hund</code>. Words go to the category above unless a line like <code>B1</code> says otherwise.</p>
         <label for="draft" class="sr-only">Word list or German text</label>
         <textarea id="draft" rows="7" spellcheck="false" autocapitalize="off"
-          placeholder="der Hund - dog&#10;gehen - to go&#10;die Erfahrung = experience&#10;sich beschweren - to complain"></textarea>
+          placeholder="dog - der Hund&#10;to go - gehen&#10;experience = die Erfahrung&#10;to complain - sich beschweren"></textarea>
         <div class="row">
           <button class="btn primary" id="add-btn">Add list</button>
           <label class="btn" for="file-input">Upload .txt</label>
@@ -130,7 +140,7 @@
             <li>Separators: <code> - </code>, <code> – </code>, <code>=</code>, <code>: </code> or a tab. <code>E-Mail</code> stays one word.</li>
             <li>A line with just <code>A1</code>…<code>B2</code> (or <code>Level B1</code>, <code># B2</code>) sets the category for the lines below it.</li>
             <li><code>(B1)</code> or <code>[B1]</code> at the end of a line sets that word's category.</li>
-            <li>Example sentence after <code> | </code>: <code>der Hund - dog | Der Hund bellt.</code></li>
+            <li>German example sentence after <code> | </code>: <code>dog - der Hund | Der Hund bellt.</code></li>
           </ul>
         </details>
       </div>
@@ -178,7 +188,10 @@
           <span>Browser's own German voice</span>
           <select id="voice-select"></select>
         </label>
-        <button class="btn" id="test-voice">Test browser voice</button>
+        <div class="row">
+          <button class="btn" id="sound-check">Sound check (beep)</button>
+          <button class="btn" id="test-voice">Test browser voice</button>
+        </div>
         <div class="tip" id="voice-help">
           <strong>Browser has no German voice?</strong> Download the free German voice above. It works in every browser. Or:
           <ul>

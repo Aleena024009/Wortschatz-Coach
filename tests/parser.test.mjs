@@ -50,14 +50,28 @@ test('list numbering is removed and the article still detected', () => {
   assert.deepEqual(words.map((w) => [w.article, w.german]), [['der', 'Januar'], ['die', 'Woche'], ['die', '12 Monate']]);
 });
 
+test('English-first lists', () => {
+  const { words } = parseWordList('A1\ndog - der Hund\n1. to go = gehen\nto complain - sich beschweren (B1) | Ich beschwere mich.', ['A1', 'B1'], '', 'en-de');
+  assert.deepEqual(
+    words.map((w) => [w.article, w.german, w.english, w.level, w.pos, w.example]),
+    [
+      ['der', 'Hund', 'dog', 'A1', 'noun', ''],
+      ['', 'gehen', 'to go', 'A1', 'verb', ''],
+      ['', 'sich beschweren', 'to complain', 'B1', 'verb', 'Ich beschwere mich.'],
+    ],
+  );
+});
+
 test('non-level brackets stay part of the meaning', () => {
   const { words } = parseWordList('na ja - well (informal)');
   assert.equal(words[0].english, 'well (informal)');
 });
 
-test('example sentence after a pipe', () => {
-  const { words } = parseWordList('der Hund - dog | Der Hund bellt.');
-  assert.equal(words[0].example, 'Der Hund bellt.');
+test('example sentence after a pipe, with the level tag before or after it', () => {
+  const { words } = parseWordList('der Hund - dog | Der Hund bellt.\ndie Katze - cat (A2) | Die Katze schläft.\ndas Haus - house | Das Haus ist alt. [B1]', ['A2', 'B1']);
+  assert.deepEqual(words.map((w) => [w.example, w.level]), [
+    ['Der Hund bellt.', ''], ['Die Katze schläft.', 'A2'], ['Das Haus ist alt.', 'B1'],
+  ]);
 });
 
 test('prose detection and word extraction', () => {

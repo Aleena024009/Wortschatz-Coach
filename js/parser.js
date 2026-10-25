@@ -41,8 +41,9 @@ export function matchCategory(name, categories) {
 }
 
 // Returns { words, unparsed, newCategories }. `categories` is the list of existing category names;
-// words before any level line go to `defaultLevel`.
-export function parseWordList(text, categories = [], defaultLevel = '') {
+// words before any level line go to `defaultLevel`. `order` says which language comes first on
+// a line: 'de-en' ("der Hund - dog") or 'en-de' ("dog - der Hund").
+export function parseWordList(text, categories = [], defaultLevel = '', order = 'de-en') {
   const words = [];
   const unparsed = [];
   const known = [...categories];
@@ -78,14 +79,6 @@ export function parseWordList(text, categories = [], defaultLevel = '') {
       continue;
     }
 
-    let lineLevel = level;
-    const tag = line.match(TAG);
-    const tagCategory = tag && matchCategory(tag[1], known);
-    if (tagCategory) {
-      lineLevel = useCategory(tagCategory);
-      line = line.slice(0, tag.index).trim();
-    }
-
     let example = '';
     const exParts = line.split(EXAMPLE_SEP);
     if (exParts.length > 1) {
@@ -93,19 +86,32 @@ export function parseWordList(text, categories = [], defaultLevel = '') {
       example = exParts.slice(1).join(' | ').trim();
     }
 
+    // "(B1)" may sit at the end of the word part or at the very end after the example.
+    let lineLevel = level;
+    for (const part of ['line', 'example']) {
+      const text = part === 'line' ? line : example;
+      const tag = text.match(TAG);
+      const tagCategory = tag && matchCategory(tag[1], known);
+      if (!tagCategory) continue;
+      lineLevel = useCategory(tagCategory);
+      if (part === 'line') line = text.slice(0, tag.index).trim();
+      else example = text.slice(0, tag.index).trim();
+    }
+
     const sep = line.match(SEPARATOR);
     if (!sep || sep.index === 0) {
       unparsed.push(rawLine.trim());
       continue;
     }
-    const left = line.slice(0, sep.index).trim().replace(/^[-*•]\s+/, '');
-    const english = line.slice(sep.index + sep[0].length).trim();
-    if (!left || !english) {
+    const left = stripNumbering(line.slice(0, sep.index).trim().replace(/^[-*•]\s+/, ''));
+    const right = line.slice(sep.index + sep[0].length).trim();
+    if (!left || !right) {
       unparsed.push(rawLine.trim());
       continue;
     }
 
-    const { article, german } = splitArticle(left);
+    const [germanSide, english] = order === 'en-de' ? [right, left] : [left, right];
+    const { article, german } = splitArticle(germanSide);
     words.push({
       german,
       article,

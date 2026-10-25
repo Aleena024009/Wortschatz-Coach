@@ -43,6 +43,21 @@ export function recordingPage(mp3Url) {
   return `https://commons.wikimedia.org/wiki/File:${file}`;
 }
 
+// One shared player. Browsers (Brave, Safari) only allow sound that starts from a tap;
+// fetching a recording or generating speech takes a moment, so the player is
+// "unlocked" with a silent clip during the tap and then reused for the real sound.
+const player = typeof Audio !== 'undefined' ? new Audio() : null;
+const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+let token = 0;
+let objectUrl = null;
+
+// Call synchronously inside a click/tap handler, before any await.
+export function unlock() {
+  if (!player || !player.paused) return;
+  player.src = SILENT;
+  player.play().catch(() => {});
+}
+
 // Plays a URL or Blob; resolves once playback has started.
 export function play(src, rate = 1) {
   return start(src, rate).started;
@@ -56,24 +71,38 @@ export function playUntilEnd(src, rate = 1) {
 
 function start(src, rate) {
   stop();
-  const url = src instanceof Blob ? URL.createObjectURL(src) : src;
-  const el = new Audio(url);
-  el.preservesPitch = true;
-  el.playbackRate = rate;
-  current = el;
+  const my = ++token;
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = src instanceof Blob ? URL.createObjectURL(src) : null;
+  player.src = objectUrl || src;
+  player.preservesPitch = true;
+  player.playbackRate = rate;
+  current = player;
   const ended = new Promise((resolve) => {
     const done = () => {
-      if (src instanceof Blob) URL.revokeObjectURL(url);
+      ['ended', 'pause', 'error'].forEach((e) => player.removeEventListener(e, done));
       resolve();
     };
-    el.addEventListener('ended', done);
-    el.addEventListener('pause', done);
-    el.addEventListener('error', done);
+    ['ended', 'pause', 'error'].forEach((e) => player.addEventListener(e, done));
   });
-  return { started: el.play(), ended };
+  const started = player.play().then(() => watchdog(my));
+  return { started, ended };
+}
+
+// Some browsers report "playing" but keep the sound muted or stalled. If the clip has
+// not moved after a moment, report it so the app can explain instead of staying silent.
+export let onStalled = () => {};
+export function setStalledHandler(fn) {
+  onStalled = fn;
+}
+function watchdog(my) {
+  setTimeout(() => {
+    if (my === token && current && !player.ended && player.currentTime === 0) onStalled();
+  }, 2500);
 }
 
 export function stop() {
+  token++;
   if (current) {
     current.pause();
     current = null;

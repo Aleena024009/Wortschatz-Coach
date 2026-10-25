@@ -10,7 +10,7 @@ const ORT_WASM = 'https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/
 const PHONEMIZE = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/dist/piper-DeOu3H9E.js';
 const PHONEMIZE_WASM = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize';
 const MODEL_CACHE = 'wortschatz-voice-model-v1';
-const AUDIO_CACHE = 'wortschatz-voice-audio-v1';
+const AUDIO_CACHE = 'wortschatz-voice-audio-v2'; // v2: louder
 export const MODEL_SIZE_MB = 63;
 
 let session = null;
@@ -60,6 +60,9 @@ export async function remove() {
   await caches.delete(AUDIO_CACHE);
 }
 
+// Phrases cached before the volume fix are quiet; drop that old cache.
+caches.delete('wortschatz-voice-audio-v1').catch(() => {});
+
 // Loads the model ahead of time so the first word plays without the ~10 s start-up.
 export function warmUp() {
   return load();
@@ -104,6 +107,15 @@ async function phonemeIds(text) {
   });
 }
 
+// The model speaks quietly (peaks around 0.2); bring it up to the loudness of the recordings.
+function normalize(samples) {
+  let peak = 0;
+  for (const x of samples) peak = Math.max(peak, Math.abs(x));
+  if (peak < 0.01) return samples;
+  const gain = Math.min(0.9 / peak, 6);
+  return samples.map((x) => x * gain);
+}
+
 function toWav(samples, sampleRate) {
   const view = new DataView(new ArrayBuffer(44 + samples.length * 2));
   const str = (o, s) => [...s].forEach((c, i) => view.setUint8(o + i, c.charCodeAt(0)));
@@ -133,7 +145,7 @@ async function synthesize(text) {
     scales: new ort.Tensor('float32', [noise, length, noiseW]),
   };
   const { output } = await session.run(inputs);
-  return toWav(output.data, config.audio.sample_rate);
+  return toWav(normalize(output.data), config.audio.sample_rate);
 }
 
 // Returns a WAV blob for `text`, from the phrase cache when it was spoken before.
