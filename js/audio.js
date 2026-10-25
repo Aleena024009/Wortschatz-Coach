@@ -101,6 +101,11 @@ function watchdog(my) {
   }, 2500);
 }
 
+// What the browser reports about the current sound (for the sound check).
+export function status() {
+  return { played: player ? (player.ended ? player.duration : player.currentTime) : 0, muted: !!player?.muted, volume: player?.volume ?? 0 };
+}
+
 export function stop() {
   token++;
   if (current) {

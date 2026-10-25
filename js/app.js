@@ -194,11 +194,32 @@ function beep() {
 
 async function soundCheck() {
   audio.unlock();
+  const out = $('sound-result');
+  out.hidden = false;
+  out.textContent = 'Playing a beep…';
   try {
     await audio.play(beep());
-    toast('Did you hear a beep? If not, the sound is muted in your browser or computer (see the tips below).');
   } catch (err) {
-    toast(`Your browser blocked the sound (${err.name}). Allow sound for this site and try again.`);
+    out.replaceChildren(h('strong', {}, '✗ Your browser refused to play sound. '),
+      `(${err.name}) Allow sound and autoplay for this site: click the icon left of the address → Site settings → Sound: Allow, Autoplay: Allow. Then reload.`);
+    return;
+  }
+  await new Promise((r) => setTimeout(r, 1200));
+  const st = audio.status();
+  if (st.played > 0.2) {
+    out.replaceChildren(
+      h('strong', {}, '✓ The app and your browser played the beep. '),
+      'If you heard nothing, the sound is muted outside the app. Check, in this order:',
+      h('ol', {},
+        h('li', {}, 'The tab is not muted: right-click this tab → “Unmute site”.'),
+        h('li', {}, 'This site is not muted: icon left of the address → Site settings → Sound → Allow.'),
+        h('li', {}, 'Other sites play sound in this browser (try a YouTube video).'),
+        h('li', {}, 'Your computer volume is up and the right output is selected (speakers vs. headphones / HDMI) in the system sound settings.'),
+      ),
+    );
+  } else {
+    out.replaceChildren(h('strong', {}, '✗ The browser accepted the sound but did not play it. '),
+      'Allow sound and autoplay for this site (icon left of the address → Site settings), then reload.');
   }
 }
 
@@ -938,8 +959,9 @@ function renderVoices() {
     options.push(h('option', { value: v.voiceURI, selected: v.voiceURI === settings.voiceURI }, `${v.name} (${v.lang})${v.localService ? '' : ' · online'}`));
   }
   select.replaceChildren(...options);
-  select.disabled = !voices.length;
-  $('test-voice').disabled = !speech.hasAnyVoice();
+  // Without a German browser voice these controls do nothing, so hide them.
+  $('browser-voice-field').hidden = !voices.length;
+  $('test-voice').hidden = !voices.length;
   if (!voices.some((v) => v.voiceURI === settings.voiceURI)) select.value = '';
 }
 

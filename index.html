@@ -174,7 +174,7 @@
             <button role="radio" data-source="recording">Native speaker</button>
             <button role="radio" data-source="voice">Computer voice</button>
           </div>
-          <p class="hint">Native-speaker recordings come from Wiktionary (needs internet). If a word has none, a computer voice is used. Sentences always use a computer voice.</p>
+          <p class="hint"><strong>Native speaker</strong>: a real German person's recording from Wiktionary (needs internet; most common words have one). <strong>Computer voice</strong>: Thorsten, generated on your device. If one isn't available for a word, the other is used. Sentences always use the computer voice.</p>
         </div>
         <div class="field">
           <span id="speed-label">Speed</span>
@@ -184,7 +184,7 @@
             <button role="radio" data-rate="1">Fast</button>
           </div>
         </div>
-        <label class="field">
+        <label class="field" id="browser-voice-field">
           <span>Browser's own German voice</span>
           <select id="voice-select"></select>
         </label>
@@ -192,6 +192,7 @@
           <button class="btn" id="sound-check">Sound check (beep)</button>
           <button class="btn" id="test-voice">Test browser voice</button>
         </div>
+        <div class="tip" id="sound-result" role="status" aria-live="polite" hidden></div>
         <div class="tip" id="voice-help">
           <strong>Browser has no German voice?</strong> Download the free German voice above. It works in every browser. Or:
           <ul>
