@@ -903,7 +903,7 @@ function addSingle(e) {
 
 function addFromDraft() {
   const text = $('draft').value;
-  const parsed = parseWordList(text, categoryNames(), settings.addCategory, settings.listOrder);
+  const parsed = parseWordList(text, categoryNames(), settings.addCategory, settings.listOrder, $('bulk-topic').value.trim().slice(0, 80));
   ensureCategories(parsed.newCategories);
   const { added, duplicates } = addWords(parsed.words);
   const topicCount = new Set(parsed.words.map((w) => w.topic).filter(Boolean)).size;

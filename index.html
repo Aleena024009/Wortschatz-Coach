@@ -125,7 +125,11 @@
             <button role="radio" data-order="de-en">German – English</button>
           </div>
         </div>
-        <p class="hint">One word per line, for example <code id="order-example">dog - der Hund</code>. Words go to the category above unless a line like <code>B1</code> says otherwise.</p>
+        <label class="field">
+          <span>Topic for these words <em>(optional, e.g. Days of the Week)</em></span>
+          <input id="bulk-topic" list="topic-list" placeholder="Days of the Week" autocomplete="off">
+        </label>
+        <p class="hint">One word per line, for example <code id="order-example">dog - der Hund</code>. Words go to the category and topic above, unless the list itself has a line like <code>B1</code> or a heading like <code>## Months</code>.</p>
         <label for="draft" class="sr-only">Word list or German text</label>
         <textarea id="draft" rows="7" spellcheck="false" autocapitalize="off"
           placeholder="dog - der Hund&#10;to go - gehen&#10;experience = die Erfahrung&#10;to complain - sich beschweren"></textarea>
