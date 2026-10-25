@@ -74,6 +74,7 @@ const state = {
   unsubscribe: null,
   syncStatus: '',
   hd: { ready: false, progress: null },
+  sync: { since: 0, local: 0 }, // see syncKey()
   fc: { order: [], index: 0, revealed: false },
 };
 let dbOk = false;
@@ -955,29 +956,51 @@ function applyRecords(records) {
   refresh();
 }
 
-function onCloudWords(records, isFirst, fromCache) {
+// Where this device got to in the cloud: `server` is the newest server stamp it has seen,
+// `local` this device's clock at that moment. Kept per account.
+const syncKey = (uid) => `cloudSince:${uid}`;
+
+function onCloudWords({ records, isFirst, fromCache, unstamped, newest }) {
   const all = new Map([...state.words, ...state.tombstones].map((w) => [w.id, w]));
+  const full = isFirst && !state.sync.since;
   let local;
   let remote;
-  if (isFirst) {
+  if (full) {
+    // First sync on this device: the whole list from the cloud, merged with what is here.
     local = [...all.values()];
     remote = records;
   } else {
     // Keep this device's recording lookup when a newer copy arrives.
     const changed = records.filter((r) => isNewer(r, all.get(r.id)));
-    if (!changed.length) return;
     for (const r of changed) {
       const old = all.get(r.id);
       all.set(r.id, old ? { ...r, audio: old.audio, audioV: old.audioV } : r);
     }
-    local = [];
+    // Words changed here while signed out have not reached the cloud yet.
+    local = isFirst ? [...all.values()].filter((w) => (w.updatedAt || 0) > state.sync.local) : [];
     remote = [...all.values()];
+    if (!changed.length && !local.length) {
+      saveCheckpoint(newest, fromCache);
+      return;
+    }
   }
   const { merged, toUpload } = mergeWords(local, remote);
+  // Cloud words from before server stamps existed get one: a one-time write, so later
+  // syncs can skip them.
+  const uploading = new Set(toUpload.map((w) => w.id));
+  const restamp = full ? unstamped.filter((w) => !uploading.has(w.id)).map((w) => merged.find((m) => m.id === w.id) || w) : [];
   applyRecords(merged);
   persist(db.replaceAllWords(merged));
-  if (toUpload.length) cloudSave(cloud.saveWords(state.user.uid, toUpload));
+  if (toUpload.length || restamp.length) cloudSave(cloud.saveWords(state.user.uid, [...toUpload, ...restamp]));
+  saveCheckpoint(newest, fromCache);
   setSyncStatus(fromCache ? 'Offline: changes will sync when you are back online.' : `Up to date · ${plural(state.words.length, 'word')} in your account.`);
+}
+
+function saveCheckpoint(newest, fromCache) {
+  if (fromCache || !state.user) return;
+  if (newest > state.sync.since) state.sync = { since: newest, local: Date.now() };
+  else if (!state.sync.since) return;
+  persist(db.setMeta(syncKey(state.user.uid), state.sync));
 }
 
 function onCloudMeta(meta) {
@@ -993,13 +1016,16 @@ function onCloudMeta(meta) {
   }
 }
 
-function onUserChanged(user) {
+async function onUserChanged(user) {
   state.unsubscribe?.();
   state.unsubscribe = null;
   state.user = user;
   state.syncStatus = user ? 'Syncing…' : '';
   if (user) {
-    state.unsubscribe = cloud.subscribe(user.uid, onCloudWords, onCloudMeta, (err) => setSyncStatus(`Could not sync: ${err.code || err.message}`));
+    state.sync = await db.getMeta(syncKey(user.uid), { since: 0, local: 0 }).catch(() => ({ since: 0, local: 0 }));
+    if (state.user !== user) return;
+    state.unsubscribe?.();
+    state.unsubscribe = cloud.subscribe(user.uid, state.sync.since, onCloudWords, onCloudMeta, (err) => setSyncStatus(`Could not sync: ${err.code || err.message}`));
   }
   if (state.view === 'settings') renderSyncBox();
 }

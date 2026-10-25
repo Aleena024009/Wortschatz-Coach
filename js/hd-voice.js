@@ -12,6 +12,11 @@ const PHONEMIZE_WASM = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm
 const MODEL_CACHE = 'wortschatz-voice-model-v1';
 const AUDIO_CACHE = 'wortschatz-voice-audio-v2'; // v2: louder
 export const MODEL_SIZE_MB = 63;
+// Spoken phrases are kept so they play instantly next time, but only the most recently used
+// ones: over 50 MB the oldest are dropped (down to 40 MB) and simply spoken again if needed.
+const AUDIO_LIMIT = 50 * 1024 * 1024;
+const AUDIO_KEEP = 40 * 1024 * 1024;
+const AUDIO_INDEX = 'wc.voiceAudioIndex'; // { url: [bytes, lastUsed] }
 
 let session = null;
 let config = null;
@@ -58,6 +63,7 @@ export async function remove() {
   config = null;
   await caches.delete(MODEL_CACHE);
   await caches.delete(AUDIO_CACHE);
+  try { localStorage.removeItem(AUDIO_INDEX); } catch { /* storage blocked */ }
 }
 
 // Phrases cached before the volume fix are quiet; drop that old cache.
@@ -148,6 +154,47 @@ async function synthesize(text) {
   return toWav(normalize(output.data), config.audio.sample_rate);
 }
 
+// Sizes and last use of the cached phrases. Built from the cache itself the first time
+// (phrases cached before this list existed).
+async function audioIndex(cache) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AUDIO_INDEX));
+    if (saved) return saved;
+  } catch {
+    /* no index yet, or storage blocked */
+  }
+  const index = {};
+  for (const req of await cache.keys()) {
+    const res = await cache.match(req);
+    index[req.url] = [(await res.blob()).size, 0];
+  }
+  return index;
+}
+
+function saveIndex(index) {
+  try {
+    localStorage.setItem(AUDIO_INDEX, JSON.stringify(index));
+  } catch {
+    /* storage blocked: the limit is checked again next time */
+  }
+}
+
+async function remember(cache, key, bytes) {
+  const index = await audioIndex(cache);
+  index[key] = [bytes ?? index[key]?.[0] ?? 0, Date.now()];
+  let total = Object.values(index).reduce((sum, [size]) => sum + size, 0);
+  if (total > AUDIO_LIMIT) {
+    const oldest = Object.entries(index).sort((a, b) => a[1][1] - b[1][1]);
+    for (const [url, [size]] of oldest) {
+      if (total <= AUDIO_KEEP) break;
+      await cache.delete(url);
+      delete index[url];
+      total -= size;
+    }
+  }
+  saveIndex(index);
+}
+
 // Returns a WAV blob for `text`, from the phrase cache when it was spoken before.
 export function speakBlob(text) {
   const clean = text.trim();
@@ -155,9 +202,13 @@ export function speakBlob(text) {
   const job = queue.then(async () => {
     const cache = await caches.open(AUDIO_CACHE);
     const hit = await cache.match(key);
-    if (hit) return hit.blob();
+    if (hit) {
+      remember(cache, key).catch(() => {});
+      return hit.blob();
+    }
     const wav = await synthesize(clean);
     await cache.put(key, new Response(wav, { headers: { 'content-type': 'audio/wav' } }));
+    remember(cache, key, wav.size).catch(() => {});
     return wav;
   });
   queue = job.catch(() => {});

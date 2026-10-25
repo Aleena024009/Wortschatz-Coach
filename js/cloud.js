@@ -48,9 +48,16 @@ const wordsCol = (uid) => api.fs.collection(api.db, 'users', uid, 'words');
 const metaDoc = (uid) => api.fs.doc(api.db, 'users', uid, 'meta', 'settings');
 
 // The cloud record of a word: everything except the per-device recording lookup.
+// `syncedAt` is stamped by Firebase's clock, so a device can ask for "only what changed since".
 function toCloud(w) {
-  const { audio, audioV, ...rest } = w;
-  return rest;
+  const { audio, audioV, syncedAt, ...rest } = w;
+  return { ...rest, syncedAt: api.fs.serverTimestamp() };
+}
+
+// A cloud document as a word: the server stamp becomes milliseconds (0 = written before stamps existed).
+function fromCloud(d) {
+  const { syncedAt, ...data } = d.data();
+  return { word: { ...data, id: d.id }, syncedAt: syncedAt?.toMillis?.() || 0, pending: d.metadata.hasPendingWrites };
 }
 
 export async function saveWords(uid, words) {
@@ -67,13 +74,26 @@ export async function saveCategories(uid, categories, updatedAt) {
   await api.fs.setDoc(metaDoc(uid), { categories, categoriesUpdatedAt: updatedAt }, { merge: true });
 }
 
-// Live updates. onWords(records, isFirst) gets every changed word; onMeta(meta) the categories.
-export function subscribe(uid, onWords, onMeta, onError) {
+// Live updates. With `since` = 0 the first snapshot is the whole list; otherwise only the words
+// stamped after `since` are read (each word read counts against the free daily reads). A snapshot
+// holds every write up to its newest stamp, so nothing stamped earlier can still be missing.
+// onWords({ records, isFirst, fromCache, unstamped, newest }): `unstamped` are cloud words without
+// a server stamp yet, `newest` the latest stamp seen from the server.
+export function subscribe(uid, since, onWords, onMeta, onError) {
   const { fs } = api;
   let first = true;
-  const stopWords = fs.onSnapshot(wordsCol(uid), (snap) => {
-    const records = (first ? snap.docs : snap.docChanges().map((c) => c.doc)).map((d) => ({ ...d.data(), id: d.id }));
-    onWords(records, first, snap.metadata.fromCache);
+  const query = since
+    ? fs.query(wordsCol(uid), fs.where('syncedAt', '>', fs.Timestamp.fromMillis(since)))
+    : wordsCol(uid);
+  const stopWords = fs.onSnapshot(query, (snap) => {
+    const docs = (first ? snap.docs : snap.docChanges().map((c) => c.doc)).map(fromCloud);
+    onWords({
+      records: docs.map((d) => d.word),
+      isFirst: first,
+      fromCache: snap.metadata.fromCache,
+      unstamped: docs.filter((d) => !d.syncedAt && !d.pending).map((d) => d.word),
+      newest: Math.max(0, ...docs.filter((d) => !d.pending).map((d) => d.syncedAt)),
+    });
     first = false;
   }, onError);
   const stopMeta = fs.onSnapshot(metaDoc(uid), (snap) => onMeta(snap.data() || {}), onError);
