@@ -51,9 +51,18 @@ export function matchCategory(name, categories) {
   return categories.find((c) => c.toLowerCase() === n) || '';
 }
 
+// Heading depth: "#" = 1, "##" = 2 …; a line ending in ":" counts as the deepest kind.
+function headingDepth(line) {
+  const hashes = line.match(/^#+/);
+  return hashes ? hashes[0].length : 9;
+}
+
 // Returns { words, unparsed, newCategories, topics }. `categories` is the list of existing
 // category names; words before any level line go to `defaultLevel`. `order` says which language
 // comes first on a line: 'de-en' ("der Hund - dog") or 'en-de' ("dog - der Hund").
+// Headings make topics and sections: the biggest heading level in the text is the topic
+// ("# German Numbers"), smaller ones are sections inside it ("## 1–20"). With a
+// `defaultTopic` chosen, every heading becomes a section of that topic.
 export function parseWordList(text, categories = [], defaultLevel = '', order = 'de-en', defaultTopic = '') {
   const words = [];
   const unparsed = [];
@@ -62,6 +71,14 @@ export function parseWordList(text, categories = [], defaultLevel = '', order = 
   const topics = [];
   let level = defaultLevel;
   let topic = defaultTopic;
+  let subtopic = '';
+
+  const lines = text.split(/\r?\n/).map((l) => l.trim());
+  const isHeading = (line) => !CEFR_LINE.test(line)
+    && (HEADING.test(line) || (!SEPARATOR.test(line) && COLON_HEADING.test(line)))
+    && !matchCategory((line.match(HEADING) || line.match(COLON_HEADING))[1].replace(/[:#\s]+$/, ''), categories);
+  const depths = lines.filter(isHeading).map(headingDepth);
+  const topDepth = defaultTopic ? 0 : Math.min(...depths, 99);
 
   const useCategory = (name) => {
     if (!known.some((c) => c.toLowerCase() === name.toLowerCase())) {
@@ -71,8 +88,8 @@ export function parseWordList(text, categories = [], defaultLevel = '', order = 
     return name;
   };
 
-  for (const rawLine of text.split(/\r?\n/)) {
-    let line = rawLine.trim();
+  for (const rawLine of lines) {
+    let line = rawLine;
     if (!line) continue;
 
     const cefrLine = line.match(CEFR_LINE);
@@ -88,10 +105,16 @@ export function parseWordList(text, categories = [], defaultLevel = '', order = 
       level = knownLine;
       continue;
     }
-    // Any other heading starts a topic; the words below it belong to that topic.
+    // Any other heading starts a topic or a section; the words below it belong to it.
     if (heading) {
-      topic = cleanTopic(heading[1]);
-      if (topic && !topics.includes(topic)) topics.push(topic);
+      const name = cleanTopic(heading[1]);
+      if (headingDepth(line) <= topDepth) {
+        topic = name;
+        subtopic = '';
+        if (topic && !topics.includes(topic)) topics.push(topic);
+      } else {
+        subtopic = name;
+      }
       continue;
     }
 
@@ -134,6 +157,7 @@ export function parseWordList(text, categories = [], defaultLevel = '', order = 
       english,
       level: lineLevel,
       topic,
+      subtopic,
       pos: guessPos(article, german, english),
       example,
     });

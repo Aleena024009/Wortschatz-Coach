@@ -36,7 +36,7 @@ test('level lines set the category; other headings start a topic', () => {
   assert.deepEqual(topics, ['Travel']);
 });
 
-test('a structured list with numbered headings (English first)', () => {
+test('a structured list: the title is the topic, ## headings are its sections', () => {
   const text = `# German Vocabulary – English to German
 
 ## 1. Time Expressions – Zeitangaben
@@ -59,15 +59,32 @@ Greetings:
 Hello – Hallo`;
   const { words, unparsed, topics } = parseWordList(text, ['A1', 'A2', 'B1', 'B2'], 'A1', 'en-de');
   assert.deepEqual(unparsed, []);
-  assert.deepEqual(topics, ['German Vocabulary – English to German', 'Time Expressions – Zeitangaben', 'Parts of the Day – Tageszeiten', 'The 12 Months – Die 12 Monate', 'Greetings']);
-  assert.deepEqual(words.map((w) => [w.article, w.german, w.english, w.topic, w.level]), [
-    ['', 'Heute', 'Today', 'Time Expressions – Zeitangaben', 'A1'],
-    ['', 'Morgen', 'Tomorrow', 'Time Expressions – Zeitangaben', 'A1'],
-    ['', 'Morgen', 'Morning', 'Parts of the Day – Tageszeiten', 'A1'],
-    ['der', 'Januar', 'January', 'The 12 Months – Die 12 Monate', 'A1'],
-    ['die', 'Monate', 'The months (plural)', 'The 12 Months – Die 12 Monate', 'A1'],
-    ['', 'Hallo', 'Hello', 'Greetings', 'A1'],
+  assert.deepEqual(topics, ['German Vocabulary – English to German']);
+  assert.deepEqual(words.map((w) => [w.article, w.german, w.english, w.subtopic]), [
+    ['', 'Heute', 'Today', 'Time Expressions – Zeitangaben'],
+    ['', 'Morgen', 'Tomorrow', 'Time Expressions – Zeitangaben'],
+    ['', 'Morgen', 'Morning', 'Parts of the Day – Tageszeiten'],
+    ['der', 'Januar', 'January', 'The 12 Months – Die 12 Monate'],
+    ['die', 'Monate', 'The months (plural)', 'The 12 Months – Die 12 Monate'],
+    ['', 'Hallo', 'Hello', 'Greetings'],
   ]);
+  assert.ok(words.every((w) => w.topic === 'German Vocabulary – English to German' && w.level === 'A1'));
+});
+
+test('numbers list: one topic with sections; only one heading level means topics', () => {
+  const numbers = parseWordList('# German Numbers – Zahlen von 1 bis 100\n## Numbers 1–20\none – eins\ntwo – zwei\n## Tens\nthirty – dreißig', [], '', 'en-de');
+  assert.deepEqual(numbers.words.map((w) => [w.german, w.topic, w.subtopic]), [
+    ['eins', 'German Numbers – Zahlen von 1 bis 100', 'Numbers 1–20'],
+    ['zwei', 'German Numbers – Zahlen von 1 bis 100', 'Numbers 1–20'],
+    ['dreißig', 'German Numbers – Zahlen von 1 bis 100', 'Tens'],
+  ]);
+  const flat = parseWordList('## Months\nJanuary – Januar\n## Days\nMonday – Montag', [], '', 'en-de');
+  assert.deepEqual(flat.words.map((w) => [w.topic, w.subtopic]), [['Months', ''], ['Days', '']]);
+});
+
+test('with a topic chosen, the headings of a pasted list become its sections', () => {
+  const { words } = parseWordList('one – eins\n# Tens\nthirty – dreißig', [], '', 'en-de', 'German Numbers');
+  assert.deepEqual(words.map((w) => [w.topic, w.subtopic]), [['German Numbers', ''], ['German Numbers', 'Tens']]);
 });
 
 test('known custom category without # and trailing tag', () => {

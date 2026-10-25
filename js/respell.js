@@ -101,7 +101,9 @@ function syllabify(units) {
     const a = vowelIdx[k];
     const b = vowelIdx[k + 1];
     const n = b - a - 1;
-    if (n <= 1) cuts.push(a + 1);
+    // "ng" never starts a German syllable: Zei-tung-en, not Zei-tu-ngen.
+    if (n === 1 && units[a + 1].sound === 'ng') cuts.push(a + 2);
+    else if (n <= 1) cuts.push(a + 1);
     else {
       const lastTwo = units[b - 2].sound + units[b - 1].sound;
       cuts.push(ONSET_PAIRS.has(lastTwo) ? b - 2 : a + 2);

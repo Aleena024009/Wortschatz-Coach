@@ -65,12 +65,10 @@
       <div class="voice-banner" id="voice-banner" hidden></div>
       <div class="toolbar">
         <div class="cat-tabs" id="cat-tabs" role="group" aria-label="Category"></div>
-        <label class="sr-only" for="topic-filter">Topic</label>
-        <select id="topic-filter" class="topic-select" hidden></select>
         <label class="search">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
           <span class="sr-only">Search</span>
-          <input type="search" id="search" placeholder="Search German or English" autocomplete="off">
+          <input type="search" id="search" placeholder="Search all words (German or English)" autocomplete="off">
         </label>
       </div>
       <div class="examples-note" id="examples-note" hidden>
@@ -80,11 +78,23 @@
         </div>
         <button class="btn primary" data-goto="add">Add words</button>
       </div>
+      <div class="topic-bar" id="topic-bar" hidden></div>
       <ul class="cards" id="word-list"></ul>
     </section>
 
     <!-- ADD -->
     <section id="view-add" class="view" hidden>
+      <div class="section">
+        <h2>🌐 Translate English → German</h2>
+        <form id="tr-form" class="tr-row">
+          <label for="tr-input" class="sr-only">English word or sentence</label>
+          <input id="tr-input" placeholder="e.g. the weekend, or: See you tomorrow!" autocomplete="off">
+          <button class="btn primary" type="submit">Translate</button>
+        </form>
+        <p id="tr-note" class="hint" role="status" aria-live="polite"></p>
+        <ul id="tr-results" class="tr-results"></ul>
+      </div>
+
       <div class="section">
         <h2 class="step"><span>1</span>Choose a category</h2>
         <div class="cat-picker" id="cat-picker" role="radiogroup" aria-label="Category for new words"></div>
@@ -95,16 +105,25 @@
         <form id="single-form" class="single-form" autocomplete="off">
           <label class="field">
             <span>English</span>
-            <input id="in-english" placeholder="dog" required>
+            <span class="input-with-btn">
+              <input id="in-english" placeholder="dog" required>
+              <button type="button" class="btn small" id="translate-btn" title="Fill in the German for me">🌐 Translate</button>
+            </span>
           </label>
           <label class="field">
             <span>German (with der / die / das for nouns)</span>
             <input id="in-german" lang="de" placeholder="der Hund" required autocapitalize="off" spellcheck="false">
           </label>
+          <div class="translate-options" id="translate-options" hidden></div>
           <label class="field">
             <span>Topic <em>(optional)</em></span>
             <select id="in-topic-select" class="topic-pick"></select>
             <input id="in-topic" class="topic-new" placeholder="Name of the new topic, e.g. Time Expressions" autocomplete="off" hidden>
+          </label>
+          <label class="field" id="in-sub-field" hidden>
+            <span>Section in this topic <em>(optional)</em></span>
+            <select id="in-sub-select" class="topic-pick"></select>
+            <input id="in-sub" class="topic-new" placeholder="Name of the new section, e.g. Numbers 1–20" autocomplete="off" hidden>
           </label>
           <label class="field">
             <span>Example sentence <em>(optional)</em></span>
@@ -150,7 +169,7 @@
           <summary>List format details</summary>
           <ul>
             <li>Separators: <code> - </code>, <code> – </code>, <code>=</code>, <code>: </code> or a tab. <code>E-Mail</code> stays one word.</li>
-            <li><strong>Topics:</strong> a heading such as <code>## 1. Time Expressions – Zeitangaben</code> (or a line ending in <code>:</code>) groups the words below it.</li>
+            <li><strong>Topics and sections:</strong> headings group the words below them. The biggest heading is the topic (<code># German Numbers</code>), smaller ones are its sections (<code>## Numbers 1–20</code>). If you picked a topic above, all headings become sections of it.</li>
             <li>A line with just <code>A1</code>…<code>B2</code> (or <code>Level B1</code>, <code># B2</code>) sets the category for the lines below it.</li>
             <li><code>(B1)</code> or <code>[B1]</code> at the end of a line sets that word's category.</li>
             <li>German example sentence after <code> | </code>: <code>dog - der Hund | Der Hund bellt.</code></li>

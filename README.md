@@ -22,7 +22,9 @@ The app has four sections: **Words** (your list, filtered by category, with sear
   to complain - sich beschweren
   dog - der Hund (A2) | Der Hund bellt.
   ```
-  - **Topics**: a heading (`# …`, `## …`, numbering is removed) or a line ending in `:` groups the words below it. The Words page shows each topic as a section, and Words and Practice have a topic filter. In the single-word form, the optional *Topic* field does the same.
+  - **Topics and sections**: headings group the words below them (numbering is removed). The biggest heading level in the list is the topic (`# German Numbers – Zahlen von 1 bis 100`), smaller ones are sections inside it (`## Numbers 1–20`). A list with one heading level gives one topic per heading. If you pick a topic in the bulk dropdown, every heading in the list becomes a section of it.
+- **Words page**: shows your topics as tiles (with a ▶ button that says the German part of the name). Open one to see its words, grouped by section. Inside a topic: **Practise**, **Rename**, **Remove topic**, and **Make this a section of…** (to move a whole topic into another one). **Search looks through all topics.** Each card has ✏️ **Edit** (English, German, example sentence, section) and dropdowns to change its category or topic.
+- **Translate English → German**: on the Add page, type a word or sentence. Words and short phrases come from [English Wiktionary](https://en.wiktionary.org)'s translation tables (written by people, with der/die/das from the noun's gender); sentences use the free [MyMemory](https://mymemory.translated.net) machine translation, so check those with your teacher. **🌐 Translate** next to the English field fills in the German for the word you're adding and shows other meanings to pick from.
   - Separators: ` - `, ` – `, `=`, `: ` or a tab. A hyphen inside a word (`E-Mail`) does not split.
   - Words go to the category picked on the Add screen. A line with only a level (`A1`, `Level A1`, `# A1`) changes it for the words below; a trailing `(B1)` or `[B1]` changes it for one line.
   - `der/die/das` is detected and shown smaller before the noun.
@@ -154,6 +156,7 @@ To try the AI part locally: `npm install`, put `ANTHROPIC_API_KEY=sk-ant-…` in
 | [js/respell.js](js/respell.js) | Rule-based English-style respelling |
 | [js/speech.js](js/speech.js) | Text-to-speech wrapper |
 | [js/audio.js](js/audio.js) | Native-speaker recordings from Wiktionary |
+| [js/translate.js](js/translate.js) | English → German translation (Wiktionary, MyMemory) |
 | [js/hd-voice.js](js/hd-voice.js) | Free in-browser German voice (Piper "Thorsten") |
 | [js/cloud.js](js/cloud.js), [js/sync.js](js/sync.js), [js/firebase-config.js](js/firebase-config.js) | Cloud sync with Firebase, merge rules |
 | [sw.js](sw.js), [manifest.json](manifest.json), [icons/](icons/) | PWA: offline cache, install metadata, icons |
