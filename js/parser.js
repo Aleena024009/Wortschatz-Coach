@@ -70,15 +70,24 @@ export function parseWordList(text, categories = [], defaultLevel = '', order = 
   const newCategories = [];
   const topics = [];
   let level = defaultLevel;
-  let topic = defaultTopic;
   let subtopic = '';
 
   const lines = text.split(/\r?\n/).map((l) => l.trim());
+  // A plain first line followed straight away by a heading is the list's title:
+  // "German Numbers – Zahlen von 1 bis 100" then "## Numbers 0–20" makes one topic with sections.
+  const filled = lines.map((l, i) => i).filter((i) => lines[i]);
+  if (!defaultTopic && filled.length > 1 && HEADING.test(lines[filled[1]]) && !HEADING.test(lines[filled[0]])
+    && !CEFR_LINE.test(lines[filled[0]]) && !matchCategory(lines[filled[0]].replace(/[:\s]+$/, ''), categories)) {
+    defaultTopic = cleanTopic(lines[filled[0]].replace(/:$/, ''));
+    lines[filled[0]] = '';
+  }
   const isHeading = (line) => !CEFR_LINE.test(line)
     && (HEADING.test(line) || (!SEPARATOR.test(line) && COLON_HEADING.test(line)))
     && !matchCategory((line.match(HEADING) || line.match(COLON_HEADING))[1].replace(/[:#\s]+$/, ''), categories);
   const depths = lines.filter(isHeading).map(headingDepth);
   const topDepth = defaultTopic ? 0 : Math.min(...depths, 99);
+  let topic = defaultTopic;
+  if (topic) topics.push(topic);
 
   const useCategory = (name) => {
     if (!known.some((c) => c.toLowerCase() === name.toLowerCase())) {

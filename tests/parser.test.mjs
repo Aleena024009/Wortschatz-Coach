@@ -82,6 +82,15 @@ test('numbers list: one topic with sections; only one heading level means topics
   assert.deepEqual(flat.words.map((w) => [w.topic, w.subtopic]), [['Months', ''], ['Days', '']]);
 });
 
+test('a plain title line before ## headings is the topic, the headings its sections', () => {
+  const { words, topics } = parseWordList('German Numbers – Zahlen von 1 bis 100\n\n## Numbers 0–20\nzero – null\n## Numbers 21–29\ntwenty-one – einundzwanzig', [], '', 'en-de');
+  assert.deepEqual(topics, ['German Numbers – Zahlen von 1 bis 100']);
+  assert.deepEqual(words.map((w) => [w.german, w.topic, w.subtopic]), [
+    ['null', 'German Numbers – Zahlen von 1 bis 100', 'Numbers 0–20'],
+    ['einundzwanzig', 'German Numbers – Zahlen von 1 bis 100', 'Numbers 21–29'],
+  ]);
+});
+
 test('with a topic chosen, the headings of a pasted list become its sections', () => {
   const { words } = parseWordList('one – eins\n# Tens\nthirty – dreißig', [], '', 'en-de', 'German Numbers');
   assert.deepEqual(words.map((w) => [w.topic, w.subtopic]), [['German Numbers', ''], ['German Numbers', 'Tens']]);

@@ -38,7 +38,7 @@ function loadSettings() {
 }
 
 const settings = Object.assign(
-  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '' },
+  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '', autoplay: true, shuffle: false },
   loadSettings(),
 );
 const state = {
@@ -47,6 +47,7 @@ const state = {
   view: 'words',
   search: '',
   openTopic: null, // topic opened on the Words page (null = topic overview)
+  organise: null, // topics ticked in "Group topics" mode (a Set), or null
   reading: false,
   busy: false,
   voicesReady: false,
@@ -542,8 +543,10 @@ function availability(w) {
 
 function renderAvailability(el, w) {
   const a = availability(w);
-  el.className = `source avail ${a.kind}`;
-  el.hidden = false;
+  const compact = el.classList.contains('compact');
+  el.className = `source avail ${a.kind}${compact ? ' compact' : ''}`;
+  // On word cards only a missing voice is worth a line; the rest would just be clutter.
+  el.hidden = compact && a.kind !== 'none';
   el.replaceChildren(a.text);
   if (a.kind === 'none') {
     el.append(' · ', h('button', { class: 'link-btn', onclick: () => { setView('settings'); downloadHd(); } }, 'Get free voice'));
@@ -591,49 +594,6 @@ async function runLookups() {
   lookingUp = false;
 }
 
-function levelSelect(w) {
-  const names = categoryNames();
-  const options = [...names, ...(w.level && !names.includes(w.level) ? [w.level] : [])];
-  return h('select', {
-    class: `badge ${colorClass(w.level)}`,
-    'aria-label': `Category of ${fullGerman(w)}`,
-    title: 'Move to another category',
-    onchange: (e) => {
-      w.level = e.target.value;
-      saveWords([w]);
-      refresh();
-    },
-  },
-  ...options.map((name) => h('option', { value: name, selected: name === w.level }, name)),
-  h('option', { value: '', selected: !w.level }, 'No level'));
-}
-
-function topicSelect(w) {
-  const names = topicNames().filter(Boolean);
-  return h('select', {
-    class: 'topic-mini',
-    'aria-label': `Topic of ${fullGerman(w)}`,
-    title: 'Move to another topic',
-    onchange: (e) => {
-      let topic = e.target.value;
-      if (topic === NEW_TOPIC) {
-        topic = (prompt('Name of the new topic:') || '').trim().slice(0, 80);
-        if (!topic) {
-          e.target.value = w.topic || '';
-          return;
-        }
-      }
-      if (topic !== w.topic) w.subtopic = '';
-      w.topic = topic;
-      saveWords([w]);
-      refresh();
-    },
-  },
-  h('option', { value: '', selected: !w.topic }, 'No topic'),
-  ...names.map((t) => h('option', { value: t, selected: t === w.topic }, t)),
-  h('option', { value: NEW_TOPIC }, '+ New topic…'));
-}
-
 function renameTopic(old) {
   const name = (prompt(`New name for the topic “${old}”:`, old) || '').trim().slice(0, 80);
   if (!name || name === old) return;
@@ -649,27 +609,48 @@ function renameTopic(old) {
   toast(`Renamed to “${name}”.`);
 }
 
-// Edit a word right on its card: English, German (with der/die/das) and the example.
+// Edit a word right on its card. Category, topic and section are changed here too,
+// so the card itself stays short.
 function editWord(w, card) {
   const field = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
-  const english = h('input', { value: w.english, required: true });
   const german = h('input', { value: fullGerman(w), lang: 'de', required: true, autocapitalize: 'off', spellcheck: 'false' });
+  const english = h('input', { value: w.english, required: true });
   const example = h('input', { value: w.example || '', lang: 'de', placeholder: 'Der Hund bellt.' });
-  const sections = w.topic ? sectionNames(w.topic).filter(Boolean) : [];
-  const section = w.topic ? h('select', {},
-    h('option', { value: '' }, 'No section'),
-    ...sections.map((sec) => h('option', { value: sec, selected: sec === w.subtopic }, sec)),
-    h('option', { value: NEW_TOPIC }, '+ New section…')) : null;
-  section?.addEventListener('change', () => {
-    if (section.value !== NEW_TOPIC) return;
-    const name = (prompt('Name of the new section:') || '').trim().slice(0, 80);
+  const names = categoryNames();
+  const level = h('select', {},
+    ...[...names, ...(w.level && !names.includes(w.level) ? [w.level] : [])].map((n) => h('option', { value: n, selected: n === w.level }, n)),
+    h('option', { value: '', selected: !w.level }, 'No category'));
+  const askNew = (select, kind, fallback) => {
+    if (select.value !== NEW_TOPIC) return;
+    const name = (prompt(`Name of the new ${kind}:`) || '').trim().slice(0, 80);
     if (!name) {
-      section.value = w.subtopic || '';
+      select.value = fallback();
       return;
     }
-    section.insertBefore(h('option', { value: name }, name), section.lastChild);
-    section.value = name;
+    select.insertBefore(h('option', { value: name }, name), select.lastChild);
+    select.value = name;
+  };
+  const topic = h('select', {},
+    h('option', { value: '' }, 'No topic'),
+    ...topicNames().filter(Boolean).map((t) => h('option', { value: t, selected: t === w.topic }, t)),
+    h('option', { value: NEW_TOPIC }, '+ New topic…'));
+  const section = h('select', {});
+  const fillSections = () => {
+    const sections = topic.value ? sectionNames(topic.value).filter(Boolean) : [];
+    const keep = topic.value === (w.topic || '') ? w.subtopic || '' : '';
+    section.replaceChildren(
+      h('option', { value: '' }, 'No section'),
+      ...sections.map((sec) => h('option', { value: sec, selected: sec === keep }, sec)),
+      h('option', { value: NEW_TOPIC }, '+ New section…'));
+    sectionField.hidden = !topic.value;
+  };
+  const sectionField = field('Section', section);
+  topic.addEventListener('change', () => {
+    askNew(topic, 'topic', () => w.topic || '');
+    fillSections();
   });
+  section.addEventListener('change', () => askNew(section, 'section', () => ''));
+  fillSections();
   const form = h('form', {
     class: 'edit-form',
     onsubmit: (e) => {
@@ -685,52 +666,58 @@ function editWord(w, card) {
       }
       w.english = en;
       w.example = example.value.trim();
-      if (section) w.subtopic = section.value === NEW_TOPIC ? (w.subtopic || '') : section.value;
+      w.level = level.value;
+      w.topic = topic.value === NEW_TOPIC ? w.topic || '' : topic.value;
+      w.subtopic = w.topic && section.value !== NEW_TOPIC ? section.value : '';
+      ensureCategories([w.level].filter(Boolean));
       saveWords([w]);
       refresh();
       toast(`Saved “${fullGerman(w)}”.`);
     },
   },
-  field('English', english),
   field('German (with der / die / das for nouns)', german),
+  field('English', english),
+  h('button', {
+    class: 'link-btn swap', type: 'button',
+    onclick: () => { [german.value, english.value] = [english.value, german.value]; },
+  }, '⇄ Swap German and English'),
   field('Example sentence (optional)', example),
-  section ? field(`Section in “${w.topic}”`, section) : null,
+  h('div', { class: 'edit-grid' }, field('Category', level), field('Topic', topic), sectionField),
   h('div', { class: 'row' },
     h('button', { class: 'btn primary small', type: 'submit' }, 'Save'),
     h('button', { class: 'btn small', type: 'button', onclick: () => refresh() }, 'Cancel'),
   ));
   card.replaceChildren(form);
-  english.focus();
+  german.focus();
 }
 
+// A card shows only what you need to learn the word: the German, its English meaning
+// under it, how to say it, and the example sentence if there is one.
 function wordCard(w) {
-  const source = sourceLine(w);
   const card = h('li', { class: `card ${colorClass(w.level)}` });
-  card.append(...wordCardContent(w, source, card).filter(Boolean));
-  return card;
-}
-
-function wordCardContent(w, source, card) {
-  return [
+  const voice = h('div', { class: 'source compact', 'data-id': w.id });
+  queueMicrotask(() => renderAvailability(voice, w));
+  const respelling = respellingEl(w);
+  card.append(
     h('div', { class: 'card-head' },
       h('div', { class: 'text' },
         h('div', { class: 'word', lang: 'de' }, w.article ? h('span', { class: 'article' }, w.article) : null, w.german),
-        h('div', { class: 'english' }, w.english, w.pos ? h('span', { class: 'pos' }, ` · ${w.pos}`) : null),
+        h('div', { class: 'english' }, w.english),
+        respelling ? h('div', { class: 'sound' }, respelling) : null,
       ),
-      playButton(w, source),
-    ),
-    soundRow(w),
-    source,
-    exampleRow(w, source),
-    h('div', { class: 'card-foot' },
-      levelSelect(w),
-      topicSelect(w),
-      h('span', { class: 'foot-actions' },
-        h('button', { class: 'icon-btn small remove', icon: 'edit', 'aria-label': `Edit ${fullGerman(w)}`, title: 'Edit', onclick: () => editWord(w, card) }),
-        h('button', { class: 'icon-btn small remove', icon: 'trash', 'aria-label': `Remove ${fullGerman(w)}`, title: 'Remove', onclick: () => removeWord(w.id) }),
+      h('div', { class: 'card-side' },
+        playButton(w, null),
+        h('div', { class: 'card-actions' },
+          h('button', { class: 'icon-btn small remove', icon: 'edit', 'aria-label': `Edit ${fullGerman(w)}`, title: 'Edit', onclick: () => editWord(w, card) }),
+          h('button', { class: 'icon-btn small remove', icon: 'trash', 'aria-label': `Remove ${fullGerman(w)}`, title: 'Remove', onclick: () => removeWord(w.id) }),
+        ),
       ),
     ),
-  ];
+    voice,
+  );
+  const sentence = exampleRow(w, null);
+  if (sentence) card.append(sentence);
+  return card;
 }
 
 function removeWord(id) {
@@ -758,10 +745,10 @@ function renderVoiceBanner() {
   const downloading = state.hd.progress !== null;
   banner.replaceChildren(
     h('div', {},
-      h('strong', {}, 'This browser has no German voice. '),
+      h('strong', {}, 'No German voice in this browser. '),
       downloading
         ? `Downloading the free German voice… ${Math.round(state.hd.progress * 100)}%`
-        : `Most single words still play native-speaker recordings. To hear every word and sentence, download the free German voice (${hd.MODEL_SIZE_MB} MB, once).`),
+        : `Get the free one (${hd.MODEL_SIZE_MB} MB, once) to hear every word and sentence.`),
     downloading ? null : h('div', { class: 'actions' },
       h('button', { class: 'btn primary small', onclick: downloadHd }, 'Download voice'),
       h('button', { class: 'btn small', onclick: () => setView('settings') }, 'Options'),
@@ -982,10 +969,21 @@ function openTopic(topic) {
 function removeTopic(topic) {
   const words = state.words.filter((w) => (w.topic || '') === topic);
   if (!confirm(`Remove the topic “${topic}”? Its ${plural(words.length, 'word')} stay in your list, without a topic.`)) return;
-  words.forEach((w) => { w.topic = ''; });
+  words.forEach((w) => { w.topic = ''; w.subtopic = ''; });
   saveWords(words);
   state.openTopic = null;
   refresh();
+}
+
+// Topic and section names show the German part as the title and the English part under it:
+// "German Numbers – Zahlen von 1 bis 100" -> "Zahlen von 1 bis 100" / "German Numbers".
+function titlePair(name, tag, fallback) {
+  if (!name) return h('div', { class: 'title-pair' }, h(tag, {}, fallback));
+  const german = topicGerman(name);
+  const english = german ? name.split(/\s+[-–—]\s+/).filter((p) => p.trim() !== german).join(' – ') : '';
+  return h('div', { class: 'title-pair' },
+    h(tag, { lang: german ? 'de' : null }, german || name),
+    english ? h('span', { class: 'sub' }, english) : null);
 }
 
 // Cards grouped under topic headings (used for search results and lists without topics).
@@ -994,29 +992,41 @@ function groupedCards(list, withHeads) {
   list.forEach((w) => groups.get(w.topic || '').push(w));
   return [...groups].filter(([, ws]) => ws.length).flatMap(([topic, ws]) => [
     withHeads ? h('li', { class: 'topic-head' },
-      h('h3', {}, topic || 'Other words'),
+      titlePair(topic, 'h3', 'Other words'),
       h('span', { class: 'count' }, plural(ws.length, 'word')),
-      topic ? h('button', { class: 'link-btn', onclick: () => openTopic(topic) }, 'Open topic') : null,
+      topic ? h('button', { class: 'link-btn', onclick: () => openTopic(topic) }, 'Open') : null,
     ) : null,
     ...ws.map(wordCard),
   ]).filter(Boolean);
 }
 
 function topicTile(topic, count) {
-  const german = topicGerman(topic);
-  return h('li', { class: 'topic-tile', tabindex: '0', role: 'button', onclick: () => openTopic(topic), onkeydown: (e) => { if (e.key === 'Enter') openTopic(topic); } },
-    h('div', { class: 'tile-text' },
-      h('h3', {}, topic || 'Other words'),
-      german ? h('span', { class: 'respell' }, respell(german)) : null,
-      h('span', { class: 'count' }, `${(() => { const n = sectionNames(topic).filter(Boolean).length; return n ? `${plural(n, 'section')} · ` : ''; })()}${plural(count, 'word')} →`),
-    ),
-    topicPlayButton(topic),
-  );
+  const sections = sectionNames(topic).filter(Boolean).length;
+  const picking = state.organise;
+  const picked = picking?.has(topic);
+  const choose = () => {
+    if (!picking) return openTopic(topic);
+    if (picked) picking.delete(topic);
+    else picking.add(topic);
+    renderWords();
+  };
+  return h('li', {
+    class: `topic-tile${picked ? ' picked' : ''}`, tabindex: '0', role: picking ? 'checkbox' : 'button',
+    'aria-checked': picking ? String(!!picked) : null,
+    onclick: choose,
+    onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } },
+  },
+  picking ? h('span', { class: 'tick', 'aria-hidden': 'true' }, picked ? '✓' : '') : null,
+  h('div', { class: 'tile-text' },
+    titlePair(topic, 'h3', 'Other words'),
+    h('span', { class: 'count' }, `${sections ? `${plural(sections, 'section')} · ` : ''}${plural(count, 'word')}`),
+  ),
+  picking ? null : topicPlayButton(topic));
 }
 
 function sectionHead(topic, section, count) {
   return h('li', { class: 'topic-head section-head' },
-    h('h3', {}, section || 'Other words in this topic'),
+    titlePair(section, 'h3', 'Other words in this topic'),
     section ? topicPlayButton(section, true) : null,
     h('span', { class: 'count' }, plural(count, 'word')),
     section ? h('button', { class: 'link-btn', onclick: () => renameSection(topic, section) }, 'Rename') : null,
@@ -1036,47 +1046,92 @@ function renameSection(topic, old) {
   refresh();
 }
 
-// Turns a whole topic into a section of another topic ("Numbers 1–20" into "German Numbers").
-function moveTopicInto(topic, parent) {
-  const words = state.words.filter((w) => (w.topic || '') === topic);
-  if (!parent || !confirm(`Move the ${plural(words.length, 'word')} of “${topic}” into “${parent}” as the section “${topic}”?`)) return false;
+// Turns whole topics into sections of another topic ("Numbers 0–20", "Numbers 21–29"…
+// into "German Numbers"). A section the topic already had keeps its name after a dash.
+function moveTopicsInto(topics, parent) {
+  const words = state.words.filter((w) => topics.includes(w.topic || ''));
   words.forEach((w) => {
-    w.subtopic = w.subtopic ? `${topic} – ${w.subtopic}` : topic;
+    w.subtopic = w.subtopic ? `${w.topic} – ${w.subtopic}` : w.topic;
     w.topic = parent;
   });
   saveWords(words);
+  state.organise = null;
   state.openTopic = parent;
   refresh();
-  toast(`“${topic}” is now a section of “${parent}”.`);
-  return true;
+  window.scrollTo(0, 0);
+  toast(`${plural(topics.length, 'topic')} moved into “${parent}” as sections.`);
+}
+
+// For lists pasted the wrong way round (e.g. "A – ah"): swaps German and English for a whole topic.
+function swapTopicLanguages(topic) {
+  const words = state.words.filter((w) => (w.topic || '') === topic);
+  if (!confirm(`Swap German and English for all ${plural(words.length, 'word')} in “${topic || 'Other words'}”?`)) return;
+  words.forEach((w) => {
+    const { article, german } = splitArticle(w.english);
+    Object.assign(w, { english: fullGerman(w), article, german, respelling: '', ipa: '', pos: guessPos(article, german, fullGerman(w)) });
+    delete w.audio;
+    delete w.audioV;
+  });
+  saveWords(words);
+  refresh();
+  toast('Swapped German and English.');
 }
 
 function renderTopicBar(topic, count) {
-  const german = topicGerman(topic);
+  const others = topicNames().filter((t) => t && t !== topic);
+  const more = h('details', { class: 'more-menu' },
+    h('summary', { class: 'btn small' }, 'More ▾'),
+    h('div', { class: 'menu' },
+      topic ? h('button', { onclick: () => renameTopic(topic) }, '✏️ Rename topic') : null,
+      h('button', { onclick: () => swapTopicLanguages(topic) }, '⇄ Swap German and English'),
+      topic && others.length ? h('label', {},
+        h('span', {}, 'Make this a section of:'),
+        h('select', {
+          onchange: (e) => {
+            const parent = e.target.value;
+            if (parent && confirm(`Move “${topic}” into “${parent}” as a section?`)) moveTopicsInto([topic], parent);
+            else e.target.value = '';
+          },
+        },
+        h('option', { value: '' }, 'Choose a topic…'),
+        ...others.map((t) => h('option', { value: t }, t)))) : null,
+      topic ? h('button', { class: 'danger', onclick: () => removeTopic(topic) }, 'Remove topic (keeps the words)') : null,
+    ));
   $('topic-bar').hidden = false;
-  $('topic-bar').replaceChildren(
-    h('button', { class: 'btn small', onclick: () => openTopic(null) }, '← All topics'),
-    h('div', { class: 'topic-title' },
-      h('h2', {}, topic || 'Other words'),
-      h('div', { class: 'sound' },
-        german ? h('span', { class: 'respell' }, respell(german)) : null,
-        h('span', { class: 'count' }, plural(count, 'word')),
-      ),
-    ),
+  $('topic-bar').replaceChildren(...[
+    h('button', { class: 'icon-btn back', 'aria-label': 'All topics', title: 'All topics', onclick: () => openTopic(null) }, '←'),
+    h('div', { class: 'topic-title' }, titlePair(topic, 'h2', 'Other words'), h('span', { class: 'count' }, plural(count, 'word'))),
     topicPlayButton(topic),
     h('div', { class: 'topic-actions' },
       count ? h('button', { class: 'btn small primary', onclick: () => { settings.topic = topic; saveSettings(); setView('practice'); } }, 'Practise') : null,
-      topic ? h('button', { class: 'btn small', onclick: () => renameTopic(topic) }, '✏️ Rename') : null,
-      topic ? h('button', { class: 'btn small ghost', onclick: () => removeTopic(topic) }, 'Remove topic') : null,
-      topic && topicNames().filter((t) => t && t !== topic).length
-        ? h('select', {
-          class: 'topic-mini move-into',
-          'aria-label': 'Make this topic a section of another topic',
-          onchange: (e) => { if (!moveTopicInto(topic, e.target.value)) e.target.value = ''; },
+      more),
+  ].filter(Boolean));
+}
+
+// "Organise" on the topic overview: tick several topics and put them into one topic as its sections.
+function renderOrganiseBar(names) {
+  const bar = $('topic-bar');
+  bar.hidden = false;
+  const picked = [...state.organise];
+  const targets = names.filter((t) => t && !state.organise.has(t));
+  const target = h('select', { 'aria-label': 'Topic to put them into' },
+    h('option', { value: NEW_TOPIC }, '+ A new topic…'),
+    ...targets.map((t) => h('option', { value: t }, t)));
+  bar.replaceChildren(
+    h('div', { class: 'topic-title' },
+      h('h2', {}, 'Group topics'),
+      h('span', { class: 'count' }, picked.length ? `${plural(picked.length, 'topic')} ticked. They become sections of:` : 'Tick the topics that belong together, e.g. all the “Numbers …” ones.')),
+    h('div', { class: 'topic-actions' },
+      picked.length ? target : null,
+      picked.length ? h('button', {
+        class: 'btn small primary',
+        onclick: () => {
+          let parent = target.value;
+          if (parent === NEW_TOPIC) parent = (prompt('Name of the topic to put them in, e.g. German Numbers – Zahlen:') || '').trim().slice(0, 80);
+          if (parent) moveTopicsInto(picked, parent);
         },
-        h('option', { value: '' }, 'Make this a section of…'),
-        ...topicNames().filter((t) => t && t !== topic).map((t) => h('option', { value: t }, t)))
-        : null,
+      }, 'Group') : null,
+      h('button', { class: 'btn small', onclick: () => { state.organise = null; renderWords(); } }, 'Done'),
     ),
   );
 }
@@ -1091,6 +1146,7 @@ function renderWords() {
   const q = state.search.trim();
   const names = topicNames();
   if (state.openTopic !== null && !names.includes(state.openTopic)) state.openTopic = null;
+  if (q || state.openTopic !== null) state.organise = null;
   list.className = 'cards';
 
   if (!state.words.length) {
@@ -1106,8 +1162,14 @@ function renderWords() {
   } else if (state.openTopic === null) {
     // Topic overview: one tile per topic; open a tile to see its words.
     const tiles = names.map((t) => [t, base.filter((w) => (w.topic || '') === t).length]).filter(([, n]) => n);
+    if (state.organise) renderOrganiseBar(names);
     list.className = 'cards topics';
-    list.replaceChildren(...(tiles.length ? tiles.map(([t, n]) => topicTile(t, n)) : [h('li', { class: 'empty' }, 'No words in this category yet.')]));
+    list.replaceChildren(
+      ...(tiles.length ? tiles.map(([t, n]) => topicTile(t, n)) : [h('li', { class: 'empty' }, 'No words in this category yet.')]),
+      !state.organise && tiles.length > 1
+        ? h('li', { class: 'organise-row' }, h('button', { class: 'link-btn', onclick: () => { state.organise = new Set(); renderWords(); } }, 'Group topics into one…'))
+        : '',
+    );
   } else {
     const inside = base.filter((w) => (w.topic || '') === state.openTopic);
     renderTopicBar(state.openTopic, inside.length);
@@ -1127,53 +1189,12 @@ function renderWords() {
 
 const translationLabel = (r) => (r.article ? `${r.article} ${r.german}` : r.german);
 
-function translationError(err) {
-  toast(navigator.onLine ? `Could not translate: ${err.message}. Try again in a moment.` : 'Translating needs internet.');
+function renderTranslate() {
+  const select = $('tr-category');
+  select.replaceChildren(...categoryNames().map((n) => h('option', { value: n, selected: n === settings.addCategory }, n)));
 }
 
-// 🌐 next to the English field: fills in the German field and offers the other meanings.
-async function translateForForm() {
-  const english = $('in-english').value.trim();
-  if (!english) {
-    $('in-english').focus();
-    return;
-  }
-  const btn = $('translate-btn');
-  btn.disabled = true;
-  btn.textContent = 'Translating…';
-  try {
-    const { results, source } = await translate(english);
-    if (!results.length) {
-      toast(`No German translation found for “${english}”.`);
-      return;
-    }
-    $('in-german').value = translationLabel(results[0]);
-    showTranslationOptions(results, source);
-  } catch (err) {
-    translationError(err);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🌐 Translate';
-  }
-}
-
-function showTranslationOptions(results, source) {
-  const box = $('translate-options');
-  box.hidden = false;
-  box.replaceChildren(
-    h('span', { class: 'hint' }, source === 'machine' ? 'Machine translation, please check. Options:' : 'From Wiktionary. Other meanings:'),
-    ...results.map((r) => h('button', {
-      type: 'button',
-      class: `chip${$('in-german').value === translationLabel(r) ? ' picked' : ''}`,
-      onclick: () => {
-        $('in-german').value = translationLabel(r);
-        showTranslationOptions(results, source);
-      },
-    }, translationLabel(r))),
-  );
-}
-
-// The Translate box at the top of the Add page (words or whole sentences).
+// The Translate page: English word or sentence in, German out, with ▶ and "+ Add".
 async function translateBox(e) {
   e.preventDefault();
   const english = $('tr-input').value.trim();
@@ -1191,24 +1212,22 @@ async function translateBox(e) {
       const stand = { id: `tr:${label}`, article: r.article, german: r.german, english };
       const btn = h('button', { class: 'icon-btn play small', icon: 'speaker', 'aria-label': `Say ${label}` });
       btn.addEventListener('click', () => (label.split(/\s+/).length > 3 ? say(label) : playWord(stand, btn, null)));
-      return h('li', {},
-        h('span', { class: 'tr-german', lang: 'de' }, label),
-        btn,
-        h('button', {
-          class: 'btn small',
-          onclick: () => {
-            $('in-english').value = english;
-            $('in-german').value = label;
-            $('translate-options').hidden = true;
-            $('single-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
-            $('single-submit').focus({ preventScroll: true });
-          },
-        }, 'Use'),
-      );
+      const add = h('button', {
+        class: 'btn small',
+        onclick: () => {
+          const { added } = addWords([{
+            article: r.article, german: r.german, english, level: settings.addCategory,
+            pos: guessPos(r.article, r.german, english),
+          }]);
+          add.disabled = true;
+          add.textContent = added ? `✓ Added to ${settings.addCategory || 'your words'}` : 'Already in your words';
+        },
+      }, '+ Add to my words');
+      return h('li', {}, h('span', { class: 'tr-german', lang: 'de' }, label), btn, add);
     }));
   } catch (err) {
     $('tr-note').textContent = '';
-    translationError(err);
+    toast(navigator.onLine ? `Could not translate: ${err.message}. Try again in a moment.` : 'Translating needs internet.');
   }
 }
 
@@ -1315,7 +1334,6 @@ function addSingle(e) {
     germanIn.value = '';
     englishIn.value = '';
     exampleIn.value = '';
-    $('translate-options').hidden = true;
   } else {
     $('single-msg').textContent = `“${label}” is already in your list.`;
   }
@@ -1394,7 +1412,7 @@ async function toggleReadAloud() {
 function buildDeck() {
   const ids = inTopic(inCategory(visibleSource())).map((w) => w.id);
   const keep = state.fc.order.filter((id) => ids.includes(id));
-  state.fc.order = keep.length === ids.length ? keep : ids;
+  state.fc.order = keep.length === ids.length ? keep : settings.shuffle ? shuffled(ids) : ids;
   state.fc.index = Math.min(state.fc.index, Math.max(0, state.fc.order.length - 1));
 }
 
@@ -1409,6 +1427,9 @@ function renderPractice() {
   const { order, index, revealed } = state.fc;
   const w = currentCard();
   ['fc-prev', 'fc-next', 'fc-shuffle'].forEach((id) => { $(id).disabled = order.length < 2; });
+  $('fc-shuffle').setAttribute('aria-pressed', String(!!settings.shuffle));
+  $('fc-shuffle').textContent = `Shuffle: ${settings.shuffle ? 'on' : 'off'}`;
+  $('fc-autoplay').checked = settings.autoplay;
   el.className = `flashcard ${w ? colorClass(w.level) : ''}`;
   if (!w) {
     el.replaceChildren(h('p', { class: 'empty' }, state.words.length ? 'No words in this category yet.' : 'Add some words first, then practise them here.'));
@@ -1417,8 +1438,7 @@ function renderPractice() {
   const source = sourceLine(w);
   el.replaceChildren(
     h('div', { class: 'progress' }, `${index + 1} / ${order.length}`),
-    h('span', { class: `badge ${colorClass(w.level)}` }, w.level || 'No level'),
-    w.topic ? h('div', { class: 'fc-topic' }, w.topic) : null,
+    h('div', { class: 'fc-topic' }, [w.level, topicGerman(w.subtopic || '') || w.subtopic || topicGerman(w.topic || '') || w.topic].filter(Boolean).join(' · ')),
     h('div', { class: 'word', lang: 'de' }, w.article ? h('span', { class: 'article' }, w.article) : null, w.german),
     playButton(w, source),
     source,
@@ -1426,6 +1446,11 @@ function renderPractice() {
       ? h('div', { class: 'answer' }, soundRow(w), h('div', { class: 'english' }, w.english), exampleRow(w, source))
       : h('button', { class: 'btn', onclick: reveal }, 'Show answer'),
   );
+}
+
+// Says the word on the card as soon as it appears (Practice → Auto-play).
+function autoPlay() {
+  if (settings.autoplay && state.view === 'practice') $('flashcard').querySelector('.icon-btn.play')?.click();
 }
 
 function reveal() {
@@ -1439,17 +1464,28 @@ function stepCard(delta) {
   state.fc.index = (state.fc.index + delta + n) % n;
   state.fc.revealed = false;
   renderPractice();
+  autoPlay();
 }
 
-function shuffleDeck() {
-  const a = state.fc.order;
+function shuffled(list) {
+  const a = [...list];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
+  return a;
+}
+
+// Shuffle on: cards in random order; off: in your list's order.
+function toggleShuffle() {
+  settings.shuffle = !settings.shuffle;
+  saveSettings();
+  const ids = inTopic(inCategory(visibleSource())).map((w) => w.id);
+  state.fc.order = settings.shuffle ? shuffled(ids) : ids;
   state.fc.index = 0;
   state.fc.revealed = false;
   renderPractice();
+  autoPlay();
 }
 
 // ---------- settings ----------
@@ -1502,6 +1538,7 @@ function render() {
   if (state.view === 'words') renderWords();
   else if (state.view === 'add') renderAdd();
   else if (state.view === 'practice') renderPractice();
+  else if (state.view === 'translate') renderTranslate();
   else renderSettings();
 }
 
@@ -1519,10 +1556,11 @@ function setView(view) {
     if (b.dataset.view === view) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   });
-  for (const v of ['words', 'add', 'practice', 'settings']) $(`view-${v}`).hidden = v !== view;
+  for (const v of ['words', 'add', 'translate', 'practice', 'settings']) $(`view-${v}`).hidden = v !== view;
   if (view === 'practice') state.fc.revealed = false;
   refresh();
   window.scrollTo(0, 0);
+  if (view === 'practice') autoPlay();
 }
 
 // ---------- backup ----------
@@ -1745,13 +1783,21 @@ async function init() {
   document.querySelectorAll('.nav button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
   document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => setView(b.dataset.goto)));
   $('topic-filter-practice').addEventListener('change', (e) => setTopic(e.target.value));
+  $('fc-autoplay').addEventListener('change', (e) => {
+    settings.autoplay = e.target.checked;
+    saveSettings();
+    autoPlay();
+  });
+  $('tr-category').addEventListener('change', (e) => {
+    settings.addCategory = e.target.value;
+    saveSettings();
+  });
   $('search').addEventListener('input', (e) => {
     state.search = e.target.value;
     renderWords();
   });
 
   $('single-form').addEventListener('submit', addSingle);
-  $('translate-btn').addEventListener('click', translateForForm);
   $('tr-form').addEventListener('submit', translateBox);
   for (const id of ['in-topic', 'in-sub', 'bulk-topic']) {
     $(`${id}-select`).addEventListener('change', (e) => {
@@ -1788,7 +1834,7 @@ async function init() {
 
   $('fc-prev').addEventListener('click', () => stepCard(-1));
   $('fc-next').addEventListener('click', () => stepCard(1));
-  $('fc-shuffle').addEventListener('click', shuffleDeck);
+  $('fc-shuffle').addEventListener('click', toggleShuffle);
   document.addEventListener('keydown', onKey);
 
   $('voice-select').addEventListener('change', (e) => {

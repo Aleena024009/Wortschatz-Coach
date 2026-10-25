@@ -43,6 +43,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         <span>Add</span>
       </button>
+      <button data-view="translate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h9M8.5 3v2M6 5c1 4 3.5 7 6.5 8.5M11 5c-1 4-4 7-7 8.5"/><path d="m13 21 4-9 4 9M14.5 18h5"/></svg>
+        <span>Translate</span>
+      </button>
       <button data-view="practice">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v10"/></svg>
         <span>Practice</span>
@@ -85,17 +89,6 @@
     <!-- ADD -->
     <section id="view-add" class="view" hidden>
       <div class="section">
-        <h2>🌐 Translate English → German</h2>
-        <form id="tr-form" class="tr-row">
-          <label for="tr-input" class="sr-only">English word or sentence</label>
-          <input id="tr-input" placeholder="e.g. the weekend, or: See you tomorrow!" autocomplete="off">
-          <button class="btn primary" type="submit">Translate</button>
-        </form>
-        <p id="tr-note" class="hint" role="status" aria-live="polite"></p>
-        <ul id="tr-results" class="tr-results"></ul>
-      </div>
-
-      <div class="section">
         <h2 class="step"><span>1</span>Choose a category</h2>
         <div class="cat-picker" id="cat-picker" role="radiogroup" aria-label="Category for new words"></div>
       </div>
@@ -105,16 +98,12 @@
         <form id="single-form" class="single-form" autocomplete="off">
           <label class="field">
             <span>English</span>
-            <span class="input-with-btn">
-              <input id="in-english" placeholder="dog" required>
-              <button type="button" class="btn small" id="translate-btn" title="Fill in the German for me">🌐 Translate</button>
-            </span>
+            <input id="in-english" placeholder="dog" required>
           </label>
           <label class="field">
             <span>German (with der / die / das for nouns)</span>
             <input id="in-german" lang="de" placeholder="der Hund" required autocapitalize="off" spellcheck="false">
           </label>
-          <div class="translate-options" id="translate-options" hidden></div>
           <label class="field">
             <span>Topic <em>(optional)</em></span>
             <select id="in-topic-select" class="topic-pick"></select>
@@ -178,6 +167,24 @@
       </div>
     </section>
 
+    <!-- TRANSLATE -->
+    <section id="view-translate" class="view" hidden>
+      <div class="section">
+        <h2>English → German</h2>
+        <form id="tr-form" class="tr-row">
+          <label for="tr-input" class="sr-only">English word or sentence</label>
+          <input id="tr-input" placeholder="e.g. the weekend, or: See you tomorrow!" autocomplete="off">
+          <button class="btn primary" type="submit">Translate</button>
+        </form>
+        <p id="tr-note" class="hint" role="status" aria-live="polite"></p>
+        <ul id="tr-results" class="tr-results"></ul>
+        <label class="tr-cat">
+          <span>“+ Add” puts the word in</span>
+          <select id="tr-category"></select>
+        </label>
+      </div>
+    </section>
+
     <!-- PRACTICE -->
     <section id="view-practice" class="view" hidden>
       <div class="toolbar">
@@ -191,6 +198,7 @@
         <button class="btn" id="fc-shuffle">Shuffle</button>
         <button class="btn primary" id="fc-next">Next →</button>
       </div>
+      <label class="autoplay-toggle"><input type="checkbox" id="fc-autoplay" checked> Auto-play the word on each card</label>
       <p class="hint center keys-hint">Keyboard: Space = show answer · ← → = back / next · L = listen</p>
     </section>
 
