@@ -640,3 +640,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Practice: topic dropdown, and the sub-topic dropdown under it. */
 #view-practice .toolbar .topic-select { flex: 1 1 100%; }
 #view-practice .toolbar .sub-select { margin-left: 24px; flex-basis: calc(100% - 24px); position: relative; }
+
+/* Long names and pronunciations wrap onto the next line instead of being cut off. */
+.title-pair .sub, .title-pair .respell, .card .respell, .card .english { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.title-pair .respell, .card .respell { line-height: 1.5; }
+.title-pair h3, .card .word { display: block; -webkit-line-clamp: unset; overflow: visible; }
