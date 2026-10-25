@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Wortschatz Coach</title>
+  <meta name="description" content="Practise German pronunciation with your own vocabulary list.">
+  <meta name="theme-color" content="#1d6b57" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#10201b" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Wortschatz">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Wortschatz Coach</h1>
+    <button class="btn primary install" id="install-btn" hidden>Install app</button>
+    <nav class="tabs" role="tablist" aria-label="View">
+      <button role="tab" id="tab-list" aria-selected="true" data-view="list">Words</button>
+      <button role="tab" id="tab-cards" aria-selected="false" data-view="cards">Flashcards</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-list" aria-labelledby="tab-list">
+      <details class="panel" id="add-panel">
+        <summary>Add words</summary>
+        <label for="draft" class="sr-only">Word list or German text</label>
+        <textarea id="draft" rows="7" spellcheck="false" autocapitalize="off"
+          placeholder="A1&#10;der Hund - dog&#10;gehen - to go&#10;A2&#10;die Erfahrung = experience&#10;sich beschweren - to complain (B1)"></textarea>
+        <div class="row">
+          <button class="btn primary" id="add-btn">Add words</button>
+          <label class="btn" for="file-input">Upload .txt</label>
+          <input type="file" id="file-input" accept=".txt,text/plain" hidden>
+          <button class="btn" id="read-btn">Read text aloud</button>
+          <button class="btn ghost" id="clear-btn">Clear</button>
+        </div>
+        <p id="add-msg" class="msg" role="status" aria-live="polite"></p>
+        <div id="extract-offer" class="offer" hidden>
+          <p>This looks like ordinary German text, not a word list.</p>
+          <button class="btn ai" id="extract-btn">Extract words with AI (optional)</button>
+        </div>
+        <details class="help">
+          <summary>List format</summary>
+          <ul>
+            <li>One word per line, German first: <code>der Hund - dog</code></li>
+            <li>Separators: <code> - </code>, <code> – </code>, <code>=</code>, <code>: </code> or a tab</li>
+            <li>A line with just <code>A1</code>…<code>C2</code> (or <code>Level B1</code>, <code># B2</code>) sets the level for the words below it</li>
+            <li><code>(B1)</code> or <code>[B1]</code> at the end of a line overrides the level</li>
+            <li>Your own categories work too: <code># Travel</code> on its own line, or <code>(Travel)</code> at the end</li>
+            <li>Optional example sentence after <code> | </code>: <code>der Hund - dog | Der Hund bellt.</code></li>
+          </ul>
+        </details>
+      </details>
+
+      <details class="panel" id="voice-panel">
+        <summary>Voice &amp; speed</summary>
+        <label class="field">
+          <span>German voice</span>
+          <select id="voice-select"></select>
+        </label>
+        <div class="field">
+          <span id="speed-label">Speed</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="speed-label" id="speed-group">
+            <button role="radio" data-rate="0.6">Slow</button>
+            <button role="radio" data-rate="0.85">Normal</button>
+            <button role="radio" data-rate="1">Fast</button>
+          </div>
+        </div>
+        <p class="tip">If words sound English, install a German voice: <strong>Android</strong>: Settings → Text-to-speech → Speech services by Google → Install voice data → Deutsch. <strong>iPhone</strong>: Settings → Accessibility → Spoken Content → Voices → German. Then reload the app.</p>
+      </details>
+
+      <details class="panel" id="cat-panel">
+        <summary>Categories &amp; backup</summary>
+        <ul class="cat-list" id="cat-list"></ul>
+        <form class="row" id="cat-form">
+          <label for="cat-name" class="sr-only">New category name</label>
+          <input id="cat-name" maxlength="30" placeholder="New category, e.g. C1 or Travel" autocomplete="off">
+          <button class="btn primary" type="submit">Add category</button>
+        </form>
+        <p class="tip">Tip: tap a word's coloured badge to move it to another category. In a pasted list, a line like <code># Travel</code> starts a new category.</p>
+        <div class="row">
+          <button class="btn" id="export-btn">Export backup</button>
+          <label class="btn" for="import-input">Import backup</label>
+          <input type="file" id="import-input" accept=".json,application/json" hidden>
+        </div>
+        <p id="storage-msg" class="tip"></p>
+      </details>
+
+      <details class="panel" id="ai-panel">
+        <summary>Optional: AI helper</summary>
+        <p class="tip">Everything else works without this. AI is only used when you press an AI button, and it needs the small server function described in the README.</p>
+        <button class="btn ai" id="fill-btn">Fill in missing levels &amp; spelling</button>
+        <p id="ai-msg" class="msg" role="status" aria-live="polite"></p>
+        <label class="field">
+          <span>AI endpoint</span>
+          <input type="url" id="ai-endpoint" inputmode="url" autocomplete="off" placeholder="/api/enrich">
+        </label>
+        <label class="field">
+          <span>Passcode (if you set one on the server)</span>
+          <input type="password" id="ai-passcode" autocomplete="off">
+        </label>
+      </details>
+
+      <div class="chips" id="chips" role="group" aria-label="Filter by level"></div>
+      <p id="examples-note" class="examples-note" hidden>Examples: your list is empty, so here are a few sample words. Add your own above.</p>
+      <ul class="cards" id="word-list"></ul>
+    </section>
+
+    <section id="view-cards" aria-labelledby="tab-cards" hidden>
+      <div class="chips" id="chips-cards" role="group" aria-label="Filter by level"></div>
+      <div class="flashcard" id="flashcard"></div>
+      <div class="row center">
+        <button class="btn" id="fc-prev">Back</button>
+        <button class="btn" id="fc-shuffle">Shuffle</button>
+        <button class="btn primary" id="fc-next">Next</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

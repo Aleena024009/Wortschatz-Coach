@@ -1,0 +1,18 @@
+{
+  "name": "wortschatz-coach",
+  "version": "1.0.0",
+  "private": true,
+  "description": "German vocabulary pronunciation PWA",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes serve -l 8000 .",
+    "dev:ai": "npx --yes vercel dev",
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
