@@ -110,9 +110,9 @@
             <input id="in-topic" class="topic-new" placeholder="Name of the new topic, e.g. Time Expressions" autocomplete="off" hidden>
           </label>
           <label class="field" id="in-sub-field" hidden>
-            <span>Section in this topic <em>(optional)</em></span>
+            <span>Sub-topic <em>(optional)</em></span>
             <select id="in-sub-select" class="topic-pick"></select>
-            <input id="in-sub" class="topic-new" placeholder="Name of the new section, e.g. Numbers 1–20" autocomplete="off" hidden>
+            <input id="in-sub" class="topic-new" placeholder="Name of the new sub-topic, e.g. Numbers 1–20" autocomplete="off" hidden>
           </label>
           <label class="field">
             <span>Example sentence <em>(optional)</em></span>
@@ -158,7 +158,7 @@
           <summary>List format details</summary>
           <ul>
             <li>Separators: <code> - </code>, <code> – </code>, <code>=</code>, <code>: </code> or a tab. <code>E-Mail</code> stays one word.</li>
-            <li><strong>Topics and sections:</strong> headings group the words below them. The biggest heading is the topic (<code># German Numbers</code>), smaller ones are its sections (<code>## Numbers 1–20</code>). If you picked a topic above, all headings become sections of it.</li>
+            <li><strong>Topics and sub-topics:</strong> headings group the words below them. The biggest heading is the topic (<code># German Numbers</code>), smaller ones are its sub-topics (<code>## Numbers 1–20</code>). If you picked a topic above, all headings become sub-topics of it.</li>
             <li>A line with just <code>A1</code>…<code>B2</code> (or <code>Level B1</code>, <code># B2</code>) sets the category for the lines below it.</li>
             <li><code>(B1)</code> or <code>[B1]</code> at the end of a line sets that word's category.</li>
             <li>German example sentence after <code> | </code>: <code>dog - der Hund | Der Hund bellt.</code></li>
@@ -194,9 +194,9 @@
       </div>
       <div class="flashcard" id="flashcard"></div>
       <div class="fc-controls">
-        <button class="btn" id="fc-prev">← Back</button>
+        <button class="btn" id="fc-prev"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back</button>
         <button class="btn" id="fc-shuffle">Shuffle</button>
-        <button class="btn primary" id="fc-next">Next →</button>
+        <button class="btn primary" id="fc-next">Next<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
       </div>
       <label class="autoplay-toggle"><input type="checkbox" id="fc-autoplay" checked> Auto-play the word on each card</label>
       <p class="hint center keys-hint">Keyboard: Space = show answer · ← → = back / next · L = listen</p>

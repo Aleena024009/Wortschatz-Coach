@@ -25,7 +25,22 @@ const ICONS = {
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+  chip: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>',
+  mute: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="m16 9 5 6M21 9l-5 6"/></svg>',
+  swap: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7"/></svg>',
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>',
+  cross: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
+  more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  next: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
+  out: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+  practice: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v10"/></svg>',
 };
+// A small inline icon next to text.
+const icon = (name) => h('span', { class: 'i', icon: name });
+const SOURCE_ICON = { native: 'mic', computer: 'chip', none: 'mute', checking: 'mic' };
 
 // ---------- state ----------
 
@@ -47,6 +62,7 @@ const state = {
   view: 'words',
   search: '',
   openTopic: null, // topic opened on the Words page (null = topic overview)
+  openSection: null, // sub-topic opened inside it (null = the topic itself)
   organise: null, // topics ticked in "Group topics" mode (a Set), or null
   reading: false,
   busy: false,
@@ -147,8 +163,8 @@ const rateFor = () => RECORDING_RATE[settings.rate] || 1;
 function showSource(el, source) {
   if (!el) return;
   el.className = `source avail ${source.kind || ''}`;
-  el.replaceChildren(source.href
-    ? h('a', { href: source.href, target: '_blank', rel: 'noopener' }, source.label)
+  el.replaceChildren(icon(SOURCE_ICON[source.kind] || 'speaker'), source.href
+    ? h('a', { href: source.href, target: '_blank', rel: 'noopener' }, source.label, icon('out'))
     : source.label);
   el.hidden = false;
 }
@@ -165,11 +181,11 @@ async function speakText(text) {
   speech.stop();
   if (state.hd.ready) {
     await audio.play(await hd.speakBlob(text), rateFor());
-    return { kind: 'computer', label: '🤖 Computer voice (Thorsten)' };
+    return { kind: 'computer', label: 'Computer voice (Thorsten)' };
   }
   if (hasGermanVoice()) {
     speech.speak(text, voiceOpts());
-    return { kind: 'computer', label: `🤖 Browser voice (${browserVoiceName()})` };
+    return { kind: 'computer', label: `Browser voice (${browserVoiceName()})` };
   }
   return null;
 }
@@ -196,7 +212,7 @@ async function soundCheck() {
   try {
     await audio.play(beep());
   } catch (err) {
-    out.replaceChildren(h('strong', {}, '✗ Your browser refused to play sound. '),
+    out.replaceChildren(h('strong', {}, icon('cross'), 'Your browser refused to play sound. '),
       `(${err.name}) Allow sound and autoplay for this site: click the icon left of the address → Site settings → Sound: Allow, Autoplay: Allow. Then reload.`);
     return;
   }
@@ -204,7 +220,7 @@ async function soundCheck() {
   const st = audio.status();
   if (st.played > 0.2) {
     out.replaceChildren(
-      h('strong', {}, '✓ The app and your browser played the beep. '),
+      h('strong', {}, icon('check'), 'The app and your browser played the beep. '),
       'If you heard nothing, the sound is muted outside the app. Check, in this order:',
       h('ol', {},
         h('li', {}, 'The tab is not muted: right-click this tab → “Unmute site”.'),
@@ -214,7 +230,7 @@ async function soundCheck() {
       ),
     );
   } else {
-    out.replaceChildren(h('strong', {}, '✗ The browser accepted the sound but did not play it. '),
+    out.replaceChildren(h('strong', {}, icon('cross'), 'The browser accepted the sound but did not play it. '),
       'Allow sound and autoplay for this site (icon left of the address → Site settings), then reload.');
   }
 }
@@ -268,7 +284,7 @@ async function playRecording(w, btn, sourceEl) {
   try {
     speech.stop();
     await audio.play(w.audio, rateFor());
-    showSource(sourceEl, { kind: 'native', label: '🎙 Native speaker recording ↗', href: audio.recordingPage(w.audio) });
+    showSource(sourceEl, { kind: 'native', label: 'Native speaker recording', href: audio.recordingPage(w.audio) });
     return true;
   } catch (err) {
     if (err.name === 'NotAllowedError') {
@@ -453,7 +469,7 @@ function currentPick(id) {
 function renderSectionPicker() {
   const topic = currentPick('in-topic');
   $('in-sub-field').hidden = !topic;
-  renderTopicPicker('in-sub', topic ? sectionNames(topic).filter(Boolean) : [], 'section');
+  renderTopicPicker('in-sub', topic ? sectionNames(topic).filter(Boolean) : [], 'sub-topic');
 }
 
 function pickedTopic(id) {
@@ -532,13 +548,13 @@ const computerVoiceReady = () => state.hd.ready || hasGermanVoice();
 
 // What will play for this word, shown on the card before you press play.
 function availability(w) {
-  const native = { kind: 'native', text: '🎙 Native speaker recording' };
-  const computer = { kind: 'computer', text: state.hd.ready ? '🤖 Computer voice (Thorsten)' : `🤖 Browser voice (${browserVoiceName()})` };
+  const native = { kind: 'native', text: 'Native speaker recording' };
+  const computer = { kind: 'computer', text: state.hd.ready ? 'Computer voice (Thorsten)' : `Browser voice (${browserVoiceName()})` };
   if (w.audio && (settings.source === 'recording' || !computerVoiceReady())) return native;
   if (computerVoiceReady()) return computer;
   if ((w.audio === undefined || (!w.audio && w.audioV !== AUDIO_LOOKUP_VERSION)) && navigator.onLine) return { kind: 'checking', text: 'Checking for a recording…' };
-  if (!navigator.onLine && w.audio) return { kind: 'none', text: '🔇 Offline: recordings need internet' };
-  return { kind: 'none', text: '🔇 No voice for this word yet' };
+  if (!navigator.onLine && w.audio) return { kind: 'none', text: 'Offline: recordings need internet' };
+  return { kind: 'none', text: 'No voice for this word yet' };
 }
 
 function renderAvailability(el, w) {
@@ -547,7 +563,7 @@ function renderAvailability(el, w) {
   el.className = `source avail ${a.kind}${compact ? ' compact' : ''}`;
   // On word cards only a missing voice is worth a line; the rest would just be clutter.
   el.hidden = compact && a.kind !== 'none';
-  el.replaceChildren(a.text);
+  el.replaceChildren(icon(SOURCE_ICON[a.kind]), a.text);
   if (a.kind === 'none') {
     el.append(' · ', h('button', { class: 'link-btn', onclick: () => { setView('settings'); downloadHd(); } }, 'Get free voice'));
   }
@@ -639,17 +655,17 @@ function editWord(w, card) {
     const sections = topic.value ? sectionNames(topic.value).filter(Boolean) : [];
     const keep = topic.value === (w.topic || '') ? w.subtopic || '' : '';
     section.replaceChildren(
-      h('option', { value: '' }, 'No section'),
+      h('option', { value: '' }, 'No sub-topic'),
       ...sections.map((sec) => h('option', { value: sec, selected: sec === keep }, sec)),
-      h('option', { value: NEW_TOPIC }, '+ New section…'));
+      h('option', { value: NEW_TOPIC }, '+ New sub-topic…'));
     sectionField.hidden = !topic.value;
   };
-  const sectionField = field('Section', section);
+  const sectionField = field('Sub-topic', section);
   topic.addEventListener('change', () => {
     askNew(topic, 'topic', () => w.topic || '');
     fillSections();
   });
-  section.addEventListener('change', () => askNew(section, 'section', () => ''));
+  section.addEventListener('change', () => askNew(section, 'sub-topic', () => ''));
   fillSections();
   const form = h('form', {
     class: 'edit-form',
@@ -680,7 +696,7 @@ function editWord(w, card) {
   h('button', {
     class: 'link-btn swap', type: 'button',
     onclick: () => { [german.value, english.value] = [english.value, german.value]; },
-  }, '⇄ Swap German and English'),
+  }, icon('swap'), 'Swap German and English'),
   field('Example sentence (optional)', example),
   h('div', { class: 'edit-grid' }, field('Category', level), field('Topic', topic), sectionField),
   h('div', { class: 'row' },
@@ -800,7 +816,7 @@ function renderHdBox() {
   const box = $('hd-box');
   if (state.hd.ready) {
     box.replaceChildren(
-      h('p', {}, h('span', { class: 'ok' }, '✓ Free German voice installed. '), 'Every word and sentence can be spoken, also offline. It is "Thorsten", an open-source voice that runs on this device.'),
+      h('p', {}, h('span', { class: 'ok' }, icon('check'), 'Free German voice installed. '), 'Every word and sentence can be spoken, also offline. It is "Thorsten", an open-source voice that runs on this device.'),
       h('button', { class: 'btn small', onclick: removeHd }, `Remove (frees ${hd.MODEL_SIZE_MB} MB)`),
     );
   } else if (state.hd.progress !== null) {
@@ -851,7 +867,7 @@ function renderSyncBox() {
     return;
   }
   box.replaceChildren(h('div', { class: 'sync-card' },
-    h('p', {}, h('span', { class: 'ok' }, '✓ Syncing '), `as ${state.user.email || state.user.displayName || 'you'}. Changes appear on your other devices automatically.`),
+    h('p', {}, h('span', { class: 'ok' }, icon('check'), 'Syncing '), `as ${state.user.email || state.user.displayName || 'you'}. Changes appear on your other devices automatically.`),
     state.syncStatus ? h('p', { class: 'hint' }, state.syncStatus) : null,
     h('button', { class: 'btn small', onclick: () => cloud.signOut() }, 'Sign out'),
   ));
@@ -960,8 +976,10 @@ function topicPlayButton(topic, small) {
   return btn;
 }
 
-function openTopic(topic) {
+// The Words page is like folders: topics → sub-topics → words.
+function openTopic(topic, section = null) {
   state.openTopic = topic;
+  state.openSection = section;
   renderWords();
   window.scrollTo(0, 0);
 }
@@ -971,11 +989,10 @@ function removeTopic(topic) {
   if (!confirm(`Remove the topic “${topic}”? Its ${plural(words.length, 'word')} stay in your list, without a topic.`)) return;
   words.forEach((w) => { w.topic = ''; w.subtopic = ''; });
   saveWords(words);
-  state.openTopic = null;
-  refresh();
+  openTopic(null);
 }
 
-// Topic and section names show the German part as the title and the English part under it:
+// Topic and sub-topic names show the German part as the title and the English part under it:
 // "German Numbers – Zahlen von 1 bis 100" -> "Zahlen von 1 bis 100" / "German Numbers".
 function titlePair(name, tag, fallback) {
   if (!name) return h('div', { class: 'title-pair' }, h(tag, {}, fallback));
@@ -986,7 +1003,7 @@ function titlePair(name, tag, fallback) {
     english ? h('span', { class: 'sub' }, english) : null);
 }
 
-// Cards grouped under topic headings (used for search results and lists without topics).
+// Cards grouped under topic headings (used for search results).
 function groupedCards(list, withHeads) {
   const groups = new Map(topicNames().map((t) => [t, []]));
   list.forEach((w) => groups.get(w.topic || '').push(w));
@@ -1000,14 +1017,13 @@ function groupedCards(list, withHeads) {
   ]).filter(Boolean);
 }
 
-function topicTile(topic, count) {
-  const sections = sectionNames(topic).filter(Boolean).length;
-  const picking = state.organise;
-  const picked = picking?.has(topic);
+// One folder tile: a topic on the overview, or a sub-topic inside a topic.
+function folderTile(name, detail, open, picking) {
+  const picked = picking?.has(name);
   const choose = () => {
-    if (!picking) return openTopic(topic);
-    if (picked) picking.delete(topic);
-    else picking.add(topic);
+    if (!picking) return open();
+    if (picked) picking.delete(name);
+    else picking.add(name);
     renderWords();
   };
   return h('li', {
@@ -1016,25 +1032,18 @@ function topicTile(topic, count) {
     onclick: choose,
     onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } },
   },
-  picking ? h('span', { class: 'tick', 'aria-hidden': 'true' }, picked ? '✓' : '') : null,
-  h('div', { class: 'tile-text' },
-    titlePair(topic, 'h3', 'Other words'),
-    h('span', { class: 'count' }, `${sections ? `${plural(sections, 'section')} · ` : ''}${plural(count, 'word')}`),
-  ),
-  picking ? null : topicPlayButton(topic));
+  picking ? h('span', { class: 'tick', 'aria-hidden': 'true', icon: picked ? 'check' : null }) : h('span', { class: 'folder', icon: 'folder' }),
+  h('div', { class: 'tile-text' }, titlePair(name, 'h3', 'Other words'), h('span', { class: 'count' }, detail)),
+  picking ? null : topicPlayButton(name));
 }
 
-function sectionHead(topic, section, count) {
-  return h('li', { class: 'topic-head section-head' },
-    titlePair(section, 'h3', 'Other words in this topic'),
-    section ? topicPlayButton(section, true) : null,
-    h('span', { class: 'count' }, plural(count, 'word')),
-    section ? h('button', { class: 'link-btn', onclick: () => renameSection(topic, section) }, 'Rename') : null,
-  );
+function topicTile(topic, count) {
+  const subs = sectionNames(topic).filter(Boolean).length;
+  return folderTile(topic, `${subs ? `${plural(subs, 'sub-topic')} · ` : ''}${plural(count, 'word')}`, () => openTopic(topic), state.organise);
 }
 
 function renameSection(topic, old) {
-  const name = (prompt(`New name for the section “${old}”:`, old) || '').trim().slice(0, 80);
+  const name = (prompt(`New name for the sub-topic “${old}”:`, old) || '').trim().slice(0, 80);
   if (!name || name === old) return;
   const words = state.words.filter((w) => (w.topic || '') === topic && w.subtopic === old);
   words.forEach((w) => { w.subtopic = name; });
@@ -1042,12 +1051,25 @@ function renameSection(topic, old) {
     settings.topic = topic + SEP + name;
     saveSettings();
   }
+  if (state.openSection === old) state.openSection = name;
   saveWords(words);
   refresh();
 }
 
-// Turns whole topics into sections of another topic ("Numbers 0–20", "Numbers 21–29"…
-// into "German Numbers"). A section the topic already had keeps its name after a dash.
+// Takes a sub-topic out of its topic: into another topic, or as a topic of its own.
+function moveSection(topic, section, target) {
+  const words = state.words.filter((w) => (w.topic || '') === topic && w.subtopic === section);
+  words.forEach((w) => {
+    w.topic = target || section;
+    w.subtopic = target ? section : '';
+  });
+  saveWords(words);
+  openTopic(target || section, target ? section : null);
+  toast(target ? `“${section}” is now a sub-topic of “${target}”.` : `“${section}” is now a topic of its own.`);
+}
+
+// Turns whole topics into sub-topics of another topic ("Numbers 0–20", "Numbers 21–29"…
+// into "German Numbers"). A sub-topic the topic already had keeps its name after a dash.
 function moveTopicsInto(topics, parent) {
   const words = state.words.filter((w) => topics.includes(w.topic || ''));
   words.forEach((w) => {
@@ -1056,16 +1078,13 @@ function moveTopicsInto(topics, parent) {
   });
   saveWords(words);
   state.organise = null;
-  state.openTopic = parent;
-  refresh();
-  window.scrollTo(0, 0);
-  toast(`${plural(topics.length, 'topic')} moved into “${parent}” as sections.`);
+  openTopic(parent);
+  toast(`${plural(topics.length, 'topic')} moved into “${parent}” as sub-topics.`);
 }
 
-// For lists pasted the wrong way round (e.g. "A – ah"): swaps German and English for a whole topic.
-function swapTopicLanguages(topic) {
-  const words = state.words.filter((w) => (w.topic || '') === topic);
-  if (!confirm(`Swap German and English for all ${plural(words.length, 'word')} in “${topic || 'Other words'}”?`)) return;
+// For lists pasted the wrong way round (e.g. "A – ah"): swaps German and English for these words.
+function swapLanguages(words, name) {
+  if (!confirm(`Swap German and English for all ${plural(words.length, 'word')} in “${name}”?`)) return;
   words.forEach((w) => {
     const { article, german } = splitArticle(w.english);
     Object.assign(w, { english: fullGerman(w), article, german, respelling: '', ipa: '', pos: guessPos(article, german, fullGerman(w)) });
@@ -1077,38 +1096,85 @@ function swapTopicLanguages(topic) {
   toast('Swapped German and English.');
 }
 
-function renderTopicBar(topic, count) {
-  const others = topicNames().filter((t) => t && t !== topic);
-  const more = h('details', { class: 'more-menu' },
-    h('summary', { class: 'btn small' }, 'More ▾'),
-    h('div', { class: 'menu' },
-      topic ? h('button', { onclick: () => renameTopic(topic) }, '✏️ Rename topic') : null,
-      h('button', { onclick: () => swapTopicLanguages(topic) }, '⇄ Swap German and English'),
-      topic && others.length ? h('label', {},
-        h('span', {}, 'Make this a section of:'),
-        h('select', {
-          onchange: (e) => {
-            const parent = e.target.value;
-            if (parent && confirm(`Move “${topic}” into “${parent}” as a section?`)) moveTopicsInto([topic], parent);
-            else e.target.value = '';
-          },
-        },
-        h('option', { value: '' }, 'Choose a topic…'),
-        ...others.map((t) => h('option', { value: t }, t)))) : null,
-      topic ? h('button', { class: 'danger', onclick: () => removeTopic(topic) }, 'Remove topic (keeps the words)') : null,
-    ));
+const menuButton = (iconName, label, onclick, cls) => h('button', { class: cls, onclick }, icon(iconName), label);
+
+// A "Move to…" dropdown inside the More menu.
+function menuSelect(label, choices, onpick) {
+  return h('label', {},
+    h('span', {}, label),
+    h('select', { onchange: (e) => { if (!onpick(e.target.value)) e.target.value = ''; } },
+      h('option', { value: '' }, 'Choose…'),
+      ...choices.map(([value, text]) => h('option', { value }, text))));
+}
+
+// The bar at the top of an open topic or sub-topic: back, title, play, Practise and More.
+function renderFolderBar({ name, fallback, parent, count, back, practise, menu }) {
   $('topic-bar').hidden = false;
   $('topic-bar').replaceChildren(...[
-    h('button', { class: 'icon-btn back', 'aria-label': 'All topics', title: 'All topics', onclick: () => openTopic(null) }, '←'),
-    h('div', { class: 'topic-title' }, titlePair(topic, 'h2', 'Other words'), h('span', { class: 'count' }, plural(count, 'word'))),
-    topicPlayButton(topic),
+    h('button', { class: 'icon-btn back', icon: 'back', 'aria-label': parent ? `Back to ${parent}` : 'All topics', title: parent ? `Back to ${parent}` : 'All topics', onclick: back }),
+    h('div', { class: 'topic-title' },
+      parent ? h('button', { class: 'crumb', onclick: back }, topicGerman(parent) || parent) : null,
+      titlePair(name, 'h2', fallback),
+      h('span', { class: 'count' }, count)),
+    topicPlayButton(name),
     h('div', { class: 'topic-actions' },
-      count ? h('button', { class: 'btn small primary', onclick: () => { settings.topic = topic; saveSettings(); setView('practice'); } }, 'Practise') : null,
-      more),
+      practise ? h('button', { class: 'btn small primary', onclick: practise }, icon('practice'), 'Practise') : null,
+      h('details', { class: 'more-menu' },
+        h('summary', { class: 'icon-btn', icon: 'more', 'aria-label': 'More actions', title: 'More actions' }),
+        h('div', { class: 'menu' }, ...menu.filter(Boolean)))),
   ].filter(Boolean));
 }
 
-// "Organise" on the topic overview: tick several topics and put them into one topic as its sections.
+function practiseIn(value) {
+  settings.topic = value;
+  saveSettings();
+  setView('practice');
+}
+
+function renderTopicBar(topic, words) {
+  const others = topicNames().filter((t) => t && t !== topic);
+  const subs = sectionNames(topic).filter(Boolean).length;
+  renderFolderBar({
+    name: topic,
+    fallback: 'Other words',
+    count: `${subs ? `${plural(subs, 'sub-topic')} · ` : ''}${plural(words.length, 'word')}`,
+    back: () => openTopic(null),
+    practise: words.length ? () => practiseIn(topic) : null,
+    menu: [
+      topic ? menuButton('edit', 'Rename topic', () => renameTopic(topic)) : null,
+      menuButton('swap', 'Swap German and English', () => swapLanguages(words, topic || 'Other words')),
+      topic && others.length ? menuSelect('Make this a sub-topic of:', others.map((t) => [t, t]), (parent) => {
+        if (!parent || !confirm(`Move “${topic}” into “${parent}” as a sub-topic?`)) return false;
+        moveTopicsInto([topic], parent);
+        return true;
+      }) : null,
+      topic ? menuButton('trash', 'Remove topic (keeps the words)', () => removeTopic(topic), 'danger') : null,
+    ],
+  });
+}
+
+function renderSectionBar(topic, section, words) {
+  const MOVE_OUT = '\u0000own';
+  renderFolderBar({
+    name: section,
+    fallback: 'Other words',
+    parent: topic || 'Other words',
+    count: plural(words.length, 'word'),
+    back: () => openTopic(topic),
+    practise: words.length ? () => practiseIn(topic + SEP + section) : null,
+    menu: [
+      menuButton('edit', 'Rename sub-topic', () => renameSection(topic, section)),
+      menuButton('swap', 'Swap German and English', () => swapLanguages(words, section)),
+      menuSelect('Move to:', [[MOVE_OUT, 'Its own topic'], ...topicNames().filter((t) => t && t !== topic).map((t) => [t, `Sub-topic of ${t}`])], (target) => {
+        if (!target) return false;
+        moveSection(topic, section, target === MOVE_OUT ? '' : target);
+        return true;
+      }),
+    ],
+  });
+}
+
+// "Group topics" on the topic overview: tick several topics and put them into one topic as its sub-topics.
 function renderOrganiseBar(names) {
   const bar = $('topic-bar');
   bar.hidden = false;
@@ -1120,7 +1186,7 @@ function renderOrganiseBar(names) {
   bar.replaceChildren(
     h('div', { class: 'topic-title' },
       h('h2', {}, 'Group topics'),
-      h('span', { class: 'count' }, picked.length ? `${plural(picked.length, 'topic')} ticked. They become sections of:` : 'Tick the topics that belong together, e.g. all the “Numbers …” ones.')),
+      h('span', { class: 'count' }, picked.length ? `${plural(picked.length, 'topic')} ticked. They become sub-topics of:` : 'Tick the topics that belong together, e.g. all the “Numbers …” ones.')),
     h('div', { class: 'topic-actions' },
       picked.length ? target : null,
       picked.length ? h('button', {
@@ -1146,8 +1212,10 @@ function renderWords() {
   const q = state.search.trim();
   const names = topicNames();
   if (state.openTopic !== null && !names.includes(state.openTopic)) state.openTopic = null;
+  if (state.openTopic === null || (state.openSection !== null && !sectionNames(state.openTopic).includes(state.openSection))) state.openSection = null;
   if (q || state.openTopic !== null) state.organise = null;
   list.className = 'cards';
+  const empty = (text) => [h('li', { class: 'empty' }, text)];
 
   if (!state.words.length) {
     list.replaceChildren();
@@ -1156,32 +1224,42 @@ function renderWords() {
     const found = searched(base);
     list.replaceChildren(...(found.length
       ? [h('li', { class: 'search-note' }, `${found.length} ${found.length === 1 ? 'match' : 'matches'} for “${q}” in all topics`), ...groupedCards(found, names.some(Boolean))]
-      : [h('li', { class: 'empty' }, `No words match “${q}” in any topic.`)]));
+      : empty(`No words match “${q}” in any topic.`)));
   } else if (!names.some(Boolean)) {
-    list.replaceChildren(...(base.length ? base.map(wordCard) : [h('li', { class: 'empty' }, 'No words in this category yet.')]));
+    list.replaceChildren(...(base.length ? base.map(wordCard) : empty('No words in this category yet.')));
   } else if (state.openTopic === null) {
-    // Topic overview: one tile per topic; open a tile to see its words.
+    // Topic overview: one tile per topic; open a tile to see what is inside.
     const tiles = names.map((t) => [t, base.filter((w) => (w.topic || '') === t).length]).filter(([, n]) => n);
     if (state.organise) renderOrganiseBar(names);
     list.className = 'cards topics';
     list.replaceChildren(
-      ...(tiles.length ? tiles.map(([t, n]) => topicTile(t, n)) : [h('li', { class: 'empty' }, 'No words in this category yet.')]),
+      ...(tiles.length ? tiles.map(([t, n]) => topicTile(t, n)) : empty('No words in this category yet.')),
       !state.organise && tiles.length > 1
         ? h('li', { class: 'organise-row' }, h('button', { class: 'link-btn', onclick: () => { state.organise = new Set(); renderWords(); } }, 'Group topics into one…'))
         : '',
     );
   } else {
-    const inside = base.filter((w) => (w.topic || '') === state.openTopic);
-    renderTopicBar(state.openTopic, inside.length);
-    const sections = sectionNames(state.openTopic);
-    const withSections = sections.some(Boolean);
+    const topic = state.openTopic;
+    const inside = base.filter((w) => (w.topic || '') === topic);
+    if (state.openSection !== null) {
+      // An open sub-topic: just its words.
+      const ws = inside.filter((w) => (w.subtopic || '') === state.openSection);
+      renderSectionBar(topic, state.openSection, ws);
+      list.replaceChildren(...(ws.length ? ws.map(wordCard) : empty('No words of this category here.')));
+      return;
+    }
+    renderTopicBar(topic, inside);
+    const subs = sectionNames(topic).filter(Boolean)
+      .map((sec) => [sec, inside.filter((w) => w.subtopic === sec).length]).filter(([, n]) => n);
+    const loose = inside.filter((w) => !w.subtopic);
+    list.className = subs.length ? 'cards topics' : 'cards';
     list.replaceChildren(...(inside.length
-      ? sections.flatMap((sec) => {
-        const ws = inside.filter((w) => (w.subtopic || '') === sec);
-        if (!ws.length) return [];
-        return [withSections ? sectionHead(state.openTopic, sec, ws.length) : null, ...ws.map(wordCard)].filter(Boolean);
-      })
-      : [h('li', { class: 'empty' }, 'No words of this category in this topic.')]));
+      ? [
+        ...subs.map(([sec, n]) => folderTile(sec, plural(n, 'word'), () => openTopic(topic, sec))),
+        subs.length && loose.length ? h('li', { class: 'topic-head' }, h('h3', {}, 'Other words in this topic'), h('span', { class: 'count' }, plural(loose.length, 'word'))) : null,
+        ...loose.map(wordCard),
+      ].filter(Boolean)
+      : empty('No words of this category in this topic.')));
   }
 }
 
@@ -1220,7 +1298,7 @@ async function translateBox(e) {
             pos: guessPos(r.article, r.german, english),
           }]);
           add.disabled = true;
-          add.textContent = added ? `✓ Added to ${settings.addCategory || 'your words'}` : 'Already in your words';
+          add.replaceChildren(icon('check'), added ? `Added to ${settings.addCategory || 'your words'}` : 'Already in your words');
         },
       }, '+ Add to my words');
       return h('li', {}, h('span', { class: 'tr-german', lang: 'de' }, label), btn, add);

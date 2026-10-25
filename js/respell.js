@@ -149,7 +149,10 @@ function renderSyllable(syl, stressed, isLast) {
       continue;
     }
     // "ei" after a consonant reads better as "y" (TSY-toong) than "eye" (TSEYE-toong).
-    out += u.sound === 'eye' && k > 0 ? 'y' : u.sound;
+    // At the start, "ei" before a consonant reads better as "ey" (EYNS) than "eye" (EYENS).
+    if (u.sound === 'eye' && k > 0) out += 'y';
+    else if (u.sound === 'eye' && syl[k + 1] && !syl[k + 1].v) out += 'ey';
+    else out += u.sound;
   }
   return stressed ? out.toUpperCase() : out;
 }

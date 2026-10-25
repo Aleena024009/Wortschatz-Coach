@@ -147,4 +147,5 @@ test('respelling', () => {
   assert.equal(respell('der Hund'), 'dair HOONT');
   assert.equal(respell('sich beschweren'), 'zikh buh-SHVAY-run');
   assert.equal(respell('Zeitung'), 'TSY-toong');
+  assert.equal(respell('Eins'), 'EYNS');
 });
