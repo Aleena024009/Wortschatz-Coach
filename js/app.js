@@ -3,6 +3,9 @@ import { respell } from './respell.js';
 import * as speech from './speech.js';
 import * as audio from './audio.js';
 import * as db from './db.js';
+import * as hd from './hd-voice.js';
+import * as cloud from './cloud.js';
+import { mergeWords, isNewer } from './sync.js';
 
 const SETTINGS_KEY = 'wc.settings.v1';
 const FILL_BATCH = 120;
@@ -42,7 +45,7 @@ function loadSettings() {
 }
 
 const settings = Object.assign(
-  { voiceURI: '', rate: 0.85, source: 'recording', filter: 'all', addCategory: 'A1', aiEndpoint: '', aiPasscode: '' },
+  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', addCategory: 'A1', aiEndpoint: '', aiPasscode: '' },
   loadSettings(),
 );
 const state = {
@@ -54,6 +57,12 @@ const state = {
   busy: false,
   voicesReady: false,
   recent: [],
+  tombstones: [], // removed words, kept so the removal syncs to your other devices
+  catsUpdatedAt: 0,
+  user: null,
+  unsubscribe: null,
+  syncStatus: '',
+  hd: { ready: false, progress: null },
   fc: { order: [], index: 0, revealed: false },
 };
 let dbOk = false;
@@ -72,7 +81,26 @@ function persist(promise) {
 }
 
 const sortWords = () => state.words.sort((a, b) => (b.added || 0) - (a.added || 0));
-const saveCategories = () => persist(db.setMeta('categories', state.categories));
+// Cloud writes report problems in the sync status instead of a toast.
+function cloudSave(promise) {
+  promise.then(() => {}, (err) => setSyncStatus(`Could not sync: ${err.code || err.message}`));
+}
+
+function saveCategories() {
+  state.catsUpdatedAt = Date.now();
+  persist(db.setMeta('categories', state.categories));
+  persist(db.setMeta('categoriesUpdatedAt', state.catsUpdatedAt));
+  if (state.user) cloudSave(cloud.saveCategories(state.user.uid, state.categories, state.catsUpdatedAt));
+}
+
+// Saves changed words on this device and, when signed in, to your account.
+function saveWords(words) {
+  if (!words.length) return;
+  const now = Date.now();
+  words.forEach((w) => { w.updatedAt = now; });
+  persist(db.putWords(words));
+  if (state.user) cloudSave(cloud.saveWords(state.user.uid, words));
+}
 
 // ---------- helpers ----------
 
@@ -117,50 +145,105 @@ function toast(message, actionLabel, action) {
 
 // ---------- sound ----------
 
-// Sentences and free text: device voice only.
-function say(text) {
-  audio.stop();
-  if (!speech.supported || !speech.hasAnyVoice()) {
-    toast('This browser has no voice for sentences. See Settings → Pronunciation.', 'Open', () => setView('settings'));
-    return;
-  }
-  speech.speak(text, { voiceURI: settings.voiceURI, rate: settings.rate });
+const voiceOpts = () => ({ voiceURI: settings.voiceURI, rate: settings.rate });
+const rateFor = () => RECORDING_RATE[settings.rate] || 1;
+
+// Shows under a word where the sound you just heard came from.
+function showSource(el, source) {
+  if (!el) return;
+  el.replaceChildren(source.href
+    ? h('a', { href: source.href, target: '_blank', rel: 'noopener' }, source.label)
+    : source.label);
+  el.hidden = false;
 }
 
-// Single words: a native-speaker recording when there is one, otherwise the device voice.
-async function playWord(w, btn) {
-  const wantRecording = settings.source === 'recording' || !hasGermanVoice();
-  if (wantRecording && navigator.onLine) {
-    if (w.audio === undefined || (!w.audio && w.audioV !== AUDIO_LOOKUP_VERSION)) {
-      btn?.classList.add('loading');
-      try {
-        w.audio = await audio.findRecording(fullGerman(w));
-        w.audioV = AUDIO_LOOKUP_VERSION;
-        if (!w.id.startsWith('ex')) persist(db.putWords([w]));
-      } catch {
-        /* lookup failed (network); try again next time */
-      }
-      btn?.classList.remove('loading');
-    }
-    if (w.audio) {
-      try {
-        speech.stop();
-        await audio.play(w.audio, RECORDING_RATE[settings.rate] || 1);
-        return;
-      } catch {
-        /* fall back to the device voice */
-      }
-    }
+function browserVoiceName() {
+  const voices = speech.germanVoices();
+  return (voices.find((v) => v.voiceURI === settings.voiceURI) || voices[0])?.name || 'German';
+}
+
+// Speaks German text with a computer voice: the downloaded open-source voice if you
+// installed it, otherwise the browser's own German voice. Returns the source, or null.
+async function speakText(text) {
+  audio.stop();
+  speech.stop();
+  if (state.hd.ready) {
+    await audio.play(await hd.speakBlob(text), rateFor());
+    return { label: 'Computer voice: Thorsten (open-source, runs on this device)' };
   }
-  if (speech.supported && speech.hasAnyVoice()) {
-    audio.stop();
-    speech.speak(fullGerman(w), { voiceURI: settings.voiceURI, rate: settings.rate });
+  if (hasGermanVoice()) {
+    speech.speak(text, voiceOpts());
+    return { label: `Computer voice: ${browserVoiceName()} (built into your browser)` };
+  }
+  return null;
+}
+
+function offerVoiceDownload() {
+  if (state.hd.ready || state.hd.progress !== null) {
+    toast('Could not play this. Please try again.');
     return;
   }
-  toast(navigator.onLine
-    ? 'No recording for this word, and this browser has no voice. See Settings → Pronunciation.'
-    : 'Recordings need internet, and this browser has no voice. See Settings → Pronunciation.',
-  'Open', () => setView('settings'));
+  toast(`This browser has no German voice. Get the free one (${hd.MODEL_SIZE_MB} MB, once)?`, 'Download', () => {
+    setView('settings');
+    downloadHd();
+  });
+}
+
+// Sentences: always a computer voice.
+async function say(text, sourceEl) {
+  try {
+    const source = await speakText(text);
+    if (source) showSource(sourceEl, source);
+    else offerVoiceDownload();
+  } catch (err) {
+    toast(`Could not speak: ${err.message}`);
+  }
+}
+
+async function playRecording(w, btn, sourceEl) {
+  if (!navigator.onLine) return false;
+  if (w.audio === undefined || (!w.audio && w.audioV !== AUDIO_LOOKUP_VERSION)) {
+    btn?.classList.add('loading');
+    try {
+      w.audio = await audio.findRecording(fullGerman(w));
+      w.audioV = AUDIO_LOOKUP_VERSION;
+      // Only stored on this device: it is just a lookup cache, not your data.
+      if (!w.id.startsWith('ex')) persist(db.putWords([w]));
+    } catch {
+      /* lookup failed (network); try again next time */
+    }
+    btn?.classList.remove('loading');
+  }
+  if (!w.audio) return false;
+  try {
+    speech.stop();
+    await audio.play(w.audio, rateFor());
+    showSource(sourceEl, { label: 'Native speaker recording (Wiktionary) · who recorded it', href: audio.recordingPage(w.audio) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function playComputerVoice(w, btn, sourceEl) {
+  btn?.classList.add('loading');
+  try {
+    const source = await speakText(fullGerman(w));
+    if (source) showSource(sourceEl, source);
+    return !!source;
+  } catch (err) {
+    toast(`Could not speak: ${err.message}`);
+    return false;
+  } finally {
+    btn?.classList.remove('loading');
+  }
+}
+
+// Single words: your preferred source first, then the other one.
+async function playWord(w, btn, sourceEl) {
+  const order = settings.source === 'recording' ? [playRecording, playComputerVoice] : [playComputerVoice, playRecording];
+  for (const play of order) if (await play(w, btn, sourceEl)) return;
+  offerVoiceDownload();
 }
 
 // ---------- categories ----------
@@ -224,7 +307,7 @@ function deleteCategory(name) {
   state.categories = state.categories.filter((c) => c.name !== name);
   affected.forEach((w) => { w.level = ''; });
   saveCategories();
-  if (affected.length) persist(db.putWords(affected));
+  saveWords(affected);
   if (settings.filter === name) settings.filter = 'all';
   if (settings.addCategory === name) settings.addCategory = state.categories[0]?.name || '';
   saveSettings();
@@ -290,19 +373,21 @@ function soundRow(w) {
   return parts.length ? h('div', { class: 'sound' }, parts) : null;
 }
 
-function exampleRow(w) {
+function exampleRow(w, sourceEl) {
   if (!w.example) return null;
   return h('div', { class: 'sentence' },
     h('span', { lang: 'de' }, w.example),
-    h('button', { class: 'icon-btn small', icon: 'play', 'aria-label': 'Play example sentence', onclick: () => say(w.example) }),
+    h('button', { class: 'icon-btn small', icon: 'play', 'aria-label': 'Play example sentence', onclick: () => say(w.example, sourceEl) }),
   );
 }
 
-function playButton(w) {
+function playButton(w, sourceEl) {
   const btn = h('button', { class: 'icon-btn play', icon: 'speaker', 'aria-label': `Say ${fullGerman(w)}` });
-  btn.addEventListener('click', () => playWord(w, btn));
+  btn.addEventListener('click', () => playWord(w, btn, sourceEl));
   return btn;
 }
+
+const sourceLine = () => h('div', { class: 'source', hidden: true, 'aria-live': 'polite' });
 
 function levelSelect(w) {
   const names = categoryNames();
@@ -313,7 +398,7 @@ function levelSelect(w) {
     title: 'Move to another category',
     onchange: (e) => {
       w.level = e.target.value;
-      persist(db.putWords([w]));
+      saveWords([w]);
       refresh();
     },
   },
@@ -322,16 +407,18 @@ function levelSelect(w) {
 }
 
 function wordCard(w, isExample) {
+  const source = sourceLine();
   return h('li', { class: `card ${colorClass(w.level)}${isExample ? ' example' : ''}` },
     h('div', { class: 'card-head' },
       h('div', { class: 'text' },
         h('div', { class: 'word', lang: 'de' }, w.article ? h('span', { class: 'article' }, w.article) : null, w.german),
         h('div', { class: 'english' }, w.english),
       ),
-      playButton(w),
+      playButton(w, source),
     ),
     soundRow(w),
-    exampleRow(w),
+    source,
+    exampleRow(w, source),
     h('div', { class: 'card-foot' },
       isExample
         ? h('span', { class: `badge ${colorClass(w.level)}` }, w.level)
@@ -348,26 +435,211 @@ function removeWord(id) {
   const index = state.words.findIndex((w) => w.id === id);
   if (index < 0) return;
   const [removed] = state.words.splice(index, 1);
-  persist(db.deleteWords([id]));
+  removed.deleted = true;
+  state.tombstones.push(removed);
+  saveWords([removed]);
   refresh();
   toast(`Removed “${removed.german}”`, 'Undo', () => {
+    removed.deleted = false;
+    state.tombstones = state.tombstones.filter((t) => t !== removed);
     state.words.push(removed);
     sortWords();
-    persist(db.putWords([removed]));
+    saveWords([removed]);
     refresh();
   });
 }
 
 function renderVoiceBanner() {
   const banner = $('voice-banner');
-  banner.hidden = !state.voicesReady || hasGermanVoice();
+  banner.hidden = !state.voicesReady || hasGermanVoice() || state.hd.ready;
   if (banner.hidden) return;
+  const downloading = state.hd.progress !== null;
   banner.replaceChildren(
     h('div', {},
       h('strong', {}, 'This browser has no German voice. '),
-      'Words play real recordings from native speakers (needs internet). Example sentences need a German voice.'),
-    h('button', { class: 'btn small', onclick: () => setView('settings') }, 'How to fix'),
+      downloading
+        ? `Downloading the free German voice… ${Math.round(state.hd.progress * 100)}%`
+        : `Most single words still play native-speaker recordings. To hear every word and sentence, download the free German voice (${hd.MODEL_SIZE_MB} MB, once).`),
+    downloading ? null : h('div', { class: 'actions' },
+      h('button', { class: 'btn primary small', onclick: downloadHd }, 'Download voice'),
+      h('button', { class: 'btn small', onclick: () => setView('settings') }, 'Options'),
+    ),
   );
+}
+
+// ---------- free German voice ----------
+
+let lastPercent = -1;
+function renderVoiceUi() {
+  if (state.view === 'settings') renderHdBox();
+  if (state.view === 'words') renderVoiceBanner();
+}
+
+async function downloadHd() {
+  if (state.hd.progress !== null || state.hd.ready) return;
+  state.hd.progress = 0;
+  renderVoiceUi();
+  try {
+    await hd.download((loaded, total) => {
+      state.hd.progress = total ? loaded / total : 0;
+      const percent = Math.floor(state.hd.progress * 100);
+      if (percent !== lastPercent) {
+        lastPercent = percent;
+        renderVoiceUi();
+      }
+    });
+    state.hd.ready = true;
+    toast('German voice installed. Every word and sentence can be spoken now.');
+    hd.warmUp().catch(() => {});
+  } catch (err) {
+    toast(`Download failed: ${err.message}. Check your internet and try again.`);
+  } finally {
+    state.hd.progress = null;
+    renderVoiceUi();
+  }
+}
+
+async function removeHd() {
+  if (!confirm('Remove the German voice from this device? You can download it again any time.')) return;
+  await hd.remove();
+  state.hd.ready = false;
+  renderVoiceUi();
+}
+
+function renderHdBox() {
+  const box = $('hd-box');
+  if (state.hd.ready) {
+    box.replaceChildren(
+      h('p', {}, h('span', { class: 'ok' }, '✓ Free German voice installed. '), 'Every word and sentence can be spoken, also offline. It is "Thorsten", an open-source voice that runs on this device.'),
+      h('button', { class: 'btn small', onclick: removeHd }, `Remove (frees ${hd.MODEL_SIZE_MB} MB)`),
+    );
+  } else if (state.hd.progress !== null) {
+    const pct = Math.round(state.hd.progress * 100);
+    box.replaceChildren(
+      h('p', { class: 'status' }, `Downloading the German voice… ${pct}%`),
+      h('div', { class: 'progress-bar' }, h('span', { style: `width: ${pct}%` })),
+      h('p', { class: 'hint' }, 'Keep this page open until it finishes.'),
+    );
+  } else {
+    box.replaceChildren(
+      h('p', {}, h('strong', {}, 'Free German voice for every word and sentence. '),
+        `Works in every browser (also Brave and Firefox), and offline once downloaded. Download once: ${hd.MODEL_SIZE_MB} MB.`),
+      hasGermanVoice() ? h('p', { class: 'hint' }, `Your browser already has a German voice (${browserVoiceName()}), so this is optional.`) : null,
+      h('button', { class: 'btn primary', onclick: downloadHd }, `Download German voice (${hd.MODEL_SIZE_MB} MB)`),
+    );
+  }
+}
+
+// ---------- sync across devices ----------
+
+function setSyncStatus(text) {
+  state.syncStatus = text;
+  if (state.view === 'settings') renderSyncBox();
+}
+
+function signInError(err) {
+  if (err.code === 'auth/unauthorized-domain') return `Sign-in is not allowed on ${location.hostname} yet. Add it in Firebase → Authentication → Settings → Authorized domains.`;
+  if (err.code === 'auth/popup-blocked') return 'The sign-in window was blocked. Allow pop-ups for this site and try again.';
+  return `Could not sign in: ${err.code || err.message}`;
+}
+
+function renderSyncBox() {
+  const box = $('sync-box');
+  if (!cloud.configured) {
+    box.replaceChildren(h('div', { class: 'sync-card' },
+      h('p', {}, h('strong', {}, 'Your words are saved on this device only. '),
+        'To have them on every phone, PC and browser, cloud sync needs a free Firebase project (one-time setup, about 10 minutes). The steps are in the README under “Cloud sync”.'),
+      h('p', { class: 'hint' }, 'Until then, use Export backup / Import backup below to move your words.'),
+    ));
+    return;
+  }
+  if (!state.user) {
+    box.replaceChildren(h('div', { class: 'sync-card' },
+      h('p', {}, 'Sign in to keep your words on all your devices. Sign in with the same Google account on your phone and PC, and your list is the same everywhere.'),
+      h('button', { class: 'btn primary', onclick: () => cloud.signIn().catch((err) => { if (err.code !== 'auth/popup-closed-by-user') toast(signInError(err)); }) }, 'Sign in with Google'),
+    ));
+    return;
+  }
+  box.replaceChildren(h('div', { class: 'sync-card' },
+    h('p', {}, h('span', { class: 'ok' }, '✓ Syncing '), `as ${state.user.email || state.user.displayName || 'you'}. Changes appear on your other devices automatically.`),
+    state.syncStatus ? h('p', { class: 'hint' }, state.syncStatus) : null,
+    h('button', { class: 'btn small', onclick: () => cloud.signOut() }, 'Sign out'),
+  ));
+}
+
+// Replaces the in-memory list with `records` (live words and removed ones).
+function applyRecords(records) {
+  state.words = records.filter((w) => !w.deleted);
+  state.tombstones = records.filter((w) => w.deleted);
+  sortWords();
+  ensureCategories(state.words.map((w) => w.level).filter(Boolean));
+  refresh();
+}
+
+function onCloudWords(records, isFirst, fromCache) {
+  const all = new Map([...state.words, ...state.tombstones].map((w) => [w.id, w]));
+  let local;
+  let remote;
+  if (isFirst) {
+    local = [...all.values()];
+    remote = records;
+  } else {
+    // Keep this device's recording lookup when a newer copy arrives.
+    const changed = records.filter((r) => isNewer(r, all.get(r.id)));
+    if (!changed.length) return;
+    for (const r of changed) {
+      const old = all.get(r.id);
+      all.set(r.id, old ? { ...r, audio: old.audio, audioV: old.audioV } : r);
+    }
+    local = [];
+    remote = [...all.values()];
+  }
+  const { merged, toUpload } = mergeWords(local, remote);
+  applyRecords(merged);
+  persist(db.replaceAllWords(merged));
+  if (toUpload.length) cloudSave(cloud.saveWords(state.user.uid, toUpload));
+  setSyncStatus(fromCache ? 'Offline: changes will sync when you are back online.' : `Up to date · ${plural(state.words.length, 'word')} in your account.`);
+}
+
+function onCloudMeta(meta) {
+  const remoteAt = meta.categoriesUpdatedAt || 0;
+  if (Array.isArray(meta.categories) && remoteAt > state.catsUpdatedAt) {
+    state.categories = meta.categories;
+    state.catsUpdatedAt = remoteAt;
+    persist(db.setMeta('categories', state.categories));
+    persist(db.setMeta('categoriesUpdatedAt', remoteAt));
+    refresh();
+  } else if (state.catsUpdatedAt > remoteAt) {
+    cloudSave(cloud.saveCategories(state.user.uid, state.categories, state.catsUpdatedAt));
+  }
+}
+
+function onUserChanged(user) {
+  state.unsubscribe?.();
+  state.unsubscribe = null;
+  state.user = user;
+  state.syncStatus = user ? 'Syncing…' : '';
+  if (user) {
+    state.unsubscribe = cloud.subscribe(user.uid, onCloudWords, onCloudMeta, (err) => setSyncStatus(`Could not sync: ${err.code || err.message}`));
+  }
+  if (state.view === 'settings') renderSyncBox();
+}
+
+// ---------- appearance ----------
+
+function applyTheme() {
+  const choice = settings.theme;
+  if (choice === 'light' || choice === 'dark') document.documentElement.dataset.theme = choice;
+  else delete document.documentElement.dataset.theme;
+  const dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', dark ? '#0f1513' : '#f4f2ec'));
+  document.querySelectorAll('#theme-group button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.themeChoice === choice)));
+}
+
+function setTheme(choice) {
+  settings.theme = choice;
+  saveSettings();
+  applyTheme();
 }
 
 function renderWords() {
@@ -432,7 +704,7 @@ function addWords(items) {
   ensureCategories(fresh.map((w) => w.level).filter(Boolean));
   state.words.push(...fresh);
   sortWords();
-  if (fresh.length) persist(db.putWords(fresh));
+  saveWords(fresh);
   refresh();
   return { added: fresh.length, duplicates };
 }
@@ -485,9 +757,16 @@ function saveDraftSoon() {
   draftTimer = setTimeout(() => persist(db.setMeta('draft', $('draft').value)), 300);
 }
 
-function toggleReadAloud() {
+function stopReading() {
+  state.reading = false;
+  speech.stop();
+  audio.stop();
+  $('read-btn').textContent = 'Read text aloud';
+}
+
+async function toggleReadAloud() {
   if (state.reading) {
-    speech.stop();
+    stopReading();
     return;
   }
   const text = $('draft').value.trim();
@@ -495,16 +774,32 @@ function toggleReadAloud() {
     $('add-msg').textContent = 'Paste some text first.';
     return;
   }
-  if (!speech.supported || !speech.hasAnyVoice()) {
-    say(text);
+  if (!state.hd.ready && !hasGermanVoice()) {
+    offerVoiceDownload();
     return;
   }
   state.reading = true;
   $('read-btn').textContent = 'Stop';
-  speech.speakLong(text, { voiceURI: settings.voiceURI, rate: settings.rate }, () => {
-    state.reading = false;
-    $('read-btn').textContent = 'Read text aloud';
-  });
+  try {
+    if (state.hd.ready) {
+      // Prepare the next sentence while the current one plays.
+      const chunks = speech.splitText(text);
+      let next = hd.speakBlob(chunks[0]);
+      for (let i = 0; i < chunks.length && state.reading; i++) {
+        const blob = await next;
+        next = i + 1 < chunks.length ? hd.speakBlob(chunks[i + 1]) : null;
+        if (!state.reading) break;
+        await audio.playUntilEnd(blob, rateFor());
+      }
+      next?.catch(() => {});
+    } else {
+      await new Promise((resolve) => speech.speakLong(text, voiceOpts(), resolve));
+    }
+  } catch (err) {
+    toast(`Could not read the text: ${err.message}`);
+  } finally {
+    stopReading();
+  }
 }
 
 // ---------- practice ----------
@@ -531,13 +826,15 @@ function renderPractice() {
     el.replaceChildren(h('p', { class: 'empty' }, 'No words in this category yet.'));
     return;
   }
+  const source = sourceLine();
   el.replaceChildren(
     h('div', { class: 'progress' }, `${index + 1} / ${order.length}${showingExamples() ? ' · Examples' : ''}`),
     h('span', { class: `badge ${colorClass(w.level)}` }, w.level || 'No level'),
     h('div', { class: 'word', lang: 'de' }, w.article ? h('span', { class: 'article' }, w.article) : null, w.german),
-    playButton(w),
+    playButton(w, source),
+    source,
     revealed
-      ? h('div', { class: 'answer' }, soundRow(w), h('div', { class: 'english' }, w.english), exampleRow(w))
+      ? h('div', { class: 'answer' }, soundRow(w), h('div', { class: 'english' }, w.english), exampleRow(w, source))
       : h('button', { class: 'btn', onclick: reveal }, 'Show answer'),
   );
 }
@@ -578,8 +875,13 @@ function renderSettings() {
       ),
     ),
   );
-  $('storage-msg').textContent = `${plural(state.words.length, 'word')} saved on this device${dbOk ? ' (IndexedDB)' : ''}. Each device and browser keeps its own list; use a backup file to move it. Clearing browser data deletes it.`;
+  $('storage-msg').textContent = state.user
+    ? `${plural(state.words.length, 'word')} saved on this device and in your account.`
+    : `${plural(state.words.length, 'word')} saved on this device${dbOk ? ' (IndexedDB)' : ''}. Clearing browser data deletes them, so sign in to sync or export a backup now and then.`;
   renderSegmented();
+  renderHdBox();
+  renderSyncBox();
+  applyTheme();
 }
 
 function renderVoices() {
@@ -620,6 +922,7 @@ function refresh() {
 
 function setView(view) {
   state.view = view;
+  if (state.reading) stopReading();
   speech.stop();
   audio.stop();
   document.querySelectorAll('.nav button').forEach((b) => {
@@ -716,7 +1019,7 @@ async function fillMissing() {
         if (JSON.stringify(w) !== before) changed.push(w);
       }
       ensureCategories(changed.map((w) => w.level).filter(Boolean));
-      if (changed.length) persist(db.putWords(changed));
+      saveWords(changed);
       updated += changed.length;
       refresh();
     }
@@ -811,7 +1114,7 @@ function repairNumberedWords() {
     delete w.audio;
     fixed.push(w);
   }
-  if (fixed.length) persist(db.putWords(fixed));
+  saveWords(fixed);
 }
 
 // ---------- wiring ----------
@@ -823,23 +1126,29 @@ function onKey(e) {
   else if (e.key === ' ' && !state.fc.revealed) { e.preventDefault(); reveal(); }
   else if (e.key.toLowerCase() === 'l') {
     const w = currentCard();
-    if (w) playWord(w);
+    if (w) playWord(w, null, $('flashcard').querySelector('.source'));
   }
 }
 
 async function init() {
   dbOk = await db.init();
   try {
-    state.words = await db.getAllWords();
+    const all = await db.getAllWords();
+    state.words = all.filter((w) => !w.deleted);
+    state.tombstones = all.filter((w) => w.deleted);
     state.categories = await db.getMeta('categories', null);
+    state.catsUpdatedAt = await db.getMeta('categoriesUpdatedAt', 0);
     $('draft').value = await db.getMeta('draft', '');
   } catch {
     toast('Could not open the local database.');
   }
   if (!Array.isArray(state.categories)) {
+    // Saved with timestamp 0 so categories already in your account win on first sync.
     state.categories = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
-    saveCategories();
+    persist(db.setMeta('categories', state.categories));
   }
+  state.hd.ready = await hd.isDownloaded();
+  applyTheme();
   repairNumberedWords();
   sortWords();
 
@@ -879,9 +1188,16 @@ async function init() {
   $('voice-select').addEventListener('change', (e) => {
     settings.voiceURI = e.target.value;
     saveSettings();
-    say('Hallo! Wie geht es dir?');
+    speech.speak('Hallo! Wie geht es dir?', voiceOpts());
   });
-  $('test-voice').addEventListener('click', () => say('Hallo! Wie geht es dir?'));
+  $('test-voice').addEventListener('click', () => speech.speak('Hallo! Wie geht es dir?', voiceOpts()));
+  $('theme-btn').addEventListener('click', () => {
+    const dark = document.documentElement.dataset.theme === 'dark'
+      || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+    setTheme(dark ? 'light' : 'dark');
+  });
+  document.querySelectorAll('#theme-group button').forEach((b) => b.addEventListener('click', () => setTheme(b.dataset.themeChoice)));
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
   document.querySelectorAll('#speed-group button').forEach((b) =>
     b.addEventListener('click', () => {
       settings.rate = Number(b.dataset.rate);
@@ -930,6 +1246,12 @@ async function init() {
 
   setupInstall();
   setView(state.words.length ? 'words' : 'add');
+
+  if (cloud.configured) {
+    cloud.watchUser(onUserChanged).catch(() => setSyncStatus('Could not load cloud sync. Check your internet.'));
+  }
+  // Load the downloaded voice in the background so the first word plays quickly.
+  if (state.hd.ready) setTimeout(() => hd.warmUp().catch(() => {}), 3000);
 
   if ('serviceWorker' in navigator) {
     // When a new version takes over, reload once so you see it straight away.

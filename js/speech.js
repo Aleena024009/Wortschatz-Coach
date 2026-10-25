@@ -42,15 +42,20 @@ export function speak(text, opts = {}) {
   synth.speak(makeUtterance(text, opts));
 }
 
-// Long text is split into sentence-sized chunks: some browsers (Chrome) silently
+// Splits text into sentence-sized chunks of at most ~220 characters.
+export function splitText(text) {
+  return (text.match(/[^.!?\n]+[.!?]*|\n+/g) || [])
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .flatMap((s) => (s.length > 220 ? s.match(/.{1,220}(\s|$)/g).map((x) => x.trim()) : [s]));
+}
+
+// Long text is spoken sentence by sentence: some browsers (Chrome) silently
 // stop a single utterance after ~15 seconds.
 export function speakLong(text, opts = {}, onDone = () => {}) {
   if (!synth) return onDone();
   synth.cancel();
-  const chunks = (text.match(/[^.!?\n]+[.!?]*|\n+/g) || [])
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .flatMap((s) => (s.length > 220 ? s.match(/.{1,220}(\s|$)/g) : [s]));
+  const chunks = splitText(text);
   if (!chunks.length) return onDone();
   chunks.forEach((chunk, i) => {
     const u = makeUtterance(chunk, opts);

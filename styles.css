@@ -32,8 +32,9 @@
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Dark theme: follows the system unless you pick Light or Dark in the app. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f1513;
     --surface: #171f1c;
     --surface-2: #202a26;
@@ -61,6 +62,35 @@
     --nl-bg: #262c29; --nl-fg: #b8c0bc;
   }
 }
+:root[data-theme="dark"] {
+  --bg: #0f1513;
+  --surface: #171f1c;
+  --surface-2: #202a26;
+  --text: #e8ece9;
+  --muted: #a0aaa5;
+  --border: #2a3531;
+  --accent: #5cc4a2;
+  --accent-soft: #183a30;
+  --accent-text: #06231a;
+  --ai: #b29cf2;
+  --warn-bg: #3a2f10;
+  --warn-fg: #f3d68a;
+  --shadow: none;
+
+  --cat1-bg: #173322; --cat1-fg: #8fe0a4;
+  --cat2-bg: #133331; --cat2-fg: #86dcd3;
+  --cat3-bg: #172a40; --cat3-fg: #9cc6f5;
+  --cat4-bg: #261f3e; --cat4-fg: #c3b3f5;
+  --cat5-bg: #3a2511; --cat5-fg: #f6be8c;
+  --cat6-bg: #3d1a1a; --cat6-fg: #f5a3a3;
+  --cat7-bg: #332b0c; --cat7-fg: #ecd27a;
+  --cat8-bg: #371831; --cat8-fg: #f0a8de;
+  --cat9-bg: #222d15; --cat9-fg: #bcd994;
+  --cat10-bg: #122c38; --cat10-fg: #8fd0ec;
+  --nl-bg: #262c29; --nl-fg: #b8c0bc;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -322,3 +352,28 @@ select.badge[class*="cat"] { background-color: var(--c-bg); }
 @media (hover: none) {
   .keys-hint { display: none; }
 }
+
+/* ---------- theme button, voice download, sync ---------- */
+
+.theme-btn { background: var(--surface-2); border-color: transparent; color: var(--text); }
+.theme-btn .moon { display: none; }
+:root[data-theme="dark"] .theme-btn .sun { display: none; }
+:root[data-theme="dark"] .theme-btn .moon { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-btn .sun { display: none; }
+  :root:not([data-theme="light"]) .theme-btn .moon { display: block; }
+}
+
+.hd-box, .sync-card {
+  border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 16px; background: var(--bg);
+}
+.hd-box p, .sync-card p { margin: 0 0 10px; }
+.hd-box .status { font-weight: 600; }
+.hd-box .ok, .sync-card .ok { color: var(--accent); font-weight: 650; }
+.progress-bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 8px 0; }
+.progress-bar span { display: block; height: 100%; background: var(--accent); width: 0; transition: width 0.2s; }
+.voice-banner .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; flex: none; }
+
+.source { font-size: 0.78rem; color: var(--muted); }
+.source a { color: inherit; }
+.source::before { content: "♪ "; }

@@ -35,13 +35,42 @@ export async function findRecording(german) {
   return files.length ? toMp3(files[0].url) : '';
 }
 
-export function play(url, rate = 1) {
+// The Wikimedia Commons page of a recording: who recorded it and its licence.
+export function recordingPage(mp3Url) {
+  const parts = mp3Url.split('/');
+  // Transcoded copies live at .../transcoded/a/aa/De-Hund.ogg/De-Hund.ogg.mp3
+  const file = mp3Url.includes('/transcoded/') ? parts.at(-2) : parts.at(-1);
+  return `https://commons.wikimedia.org/wiki/File:${file}`;
+}
+
+// Plays a URL or Blob; resolves once playback has started.
+export function play(src, rate = 1) {
+  return start(src, rate).started;
+}
+
+// Plays a URL or Blob; resolves when it has finished (or was stopped).
+export function playUntilEnd(src, rate = 1) {
+  const { started, ended } = start(src, rate);
+  return started.then(() => ended);
+}
+
+function start(src, rate) {
   stop();
-  const audio = new Audio(url);
-  audio.preservesPitch = true;
-  audio.playbackRate = rate;
-  current = audio;
-  return audio.play();
+  const url = src instanceof Blob ? URL.createObjectURL(src) : src;
+  const el = new Audio(url);
+  el.preservesPitch = true;
+  el.playbackRate = rate;
+  current = el;
+  const ended = new Promise((resolve) => {
+    const done = () => {
+      if (src instanceof Blob) URL.revokeObjectURL(url);
+      resolve();
+    };
+    el.addEventListener('ended', done);
+    el.addEventListener('pause', done);
+    el.addEventListener('error', done);
+  });
+  return { started: el.play(), ended };
 }
 
 export function stop() {
