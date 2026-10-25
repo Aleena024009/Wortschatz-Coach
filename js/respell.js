@@ -3,6 +3,8 @@
 // your teacher can replace it with a checked one.
 
 const PREFIXES = { zer: 'tser', ver: 'fer', ent: 'ent', emp: 'emp', be: 'buh', ge: 'guh', er: 'er' };
+// Common words that start like an unstressed prefix but are stressed on the first syllable.
+const NOT_PREFIXED = ['gestern', 'gegen', 'gegend', 'gerne', 'besser', 'beste', 'besten', 'erste', 'ersten', 'erster', 'ernst'];
 const STRESSED_ENDINGS = ['ion', 'tät', 'ei', 'ur', 'ant', 'ent', 'ist', 'ieren'];
 const FIXED = {
   der: 'dair', die: 'dee', das: 'dahs', den: 'dayn', dem: 'daym', des: 'des',
@@ -168,6 +170,7 @@ function respellWord(raw) {
 
   for (const [prefix, sound] of Object.entries(PREFIXES)) {
     const rest = word.slice(prefix.length);
+    if (NOT_PREFIXED.some((stem) => word.startsWith(stem))) break;
     if (word.startsWith(prefix) && rest.length >= 4 && tokenize(rest).some((u) => u.v)) {
       return `${sound}-${respellPlain(rest)}`;
     }

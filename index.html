@@ -65,6 +65,8 @@
       <div class="voice-banner" id="voice-banner" hidden></div>
       <div class="toolbar">
         <div class="cat-tabs" id="cat-tabs" role="group" aria-label="Category"></div>
+        <label class="sr-only" for="topic-filter">Topic</label>
+        <select id="topic-filter" class="topic-select" hidden></select>
         <label class="search">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
           <span class="sr-only">Search</span>
@@ -98,6 +100,11 @@
           <label class="field">
             <span>German (with der / die / das for nouns)</span>
             <input id="in-german" lang="de" placeholder="der Hund" required autocapitalize="off" spellcheck="false">
+          </label>
+          <label class="field">
+            <span>Topic <em>(optional, e.g. Time Expressions)</em></span>
+            <input id="in-topic" list="topic-list" placeholder="Time Expressions" autocomplete="off">
+            <datalist id="topic-list"></datalist>
           </label>
           <label class="field">
             <span>Example sentence <em>(optional)</em></span>
@@ -138,6 +145,7 @@
           <summary>List format details</summary>
           <ul>
             <li>Separators: <code> - </code>, <code> – </code>, <code>=</code>, <code>: </code> or a tab. <code>E-Mail</code> stays one word.</li>
+            <li><strong>Topics:</strong> a heading such as <code>## 1. Time Expressions – Zeitangaben</code> (or a line ending in <code>:</code>) groups the words below it.</li>
             <li>A line with just <code>A1</code>…<code>B2</code> (or <code>Level B1</code>, <code># B2</code>) sets the category for the lines below it.</li>
             <li><code>(B1)</code> or <code>[B1]</code> at the end of a line sets that word's category.</li>
             <li>German example sentence after <code> | </code>: <code>dog - der Hund | Der Hund bellt.</code></li>
@@ -148,7 +156,11 @@
 
     <!-- PRACTICE -->
     <section id="view-practice" class="view" hidden>
-      <div class="cat-tabs" id="cat-tabs-practice" role="group" aria-label="Category"></div>
+      <div class="toolbar">
+        <div class="cat-tabs" id="cat-tabs-practice" role="group" aria-label="Category"></div>
+        <label class="sr-only" for="topic-filter-practice">Topic</label>
+        <select id="topic-filter-practice" class="topic-select" hidden></select>
+      </div>
       <div class="flashcard" id="flashcard"></div>
       <div class="fc-controls">
         <button class="btn" id="fc-prev">← Back</button>

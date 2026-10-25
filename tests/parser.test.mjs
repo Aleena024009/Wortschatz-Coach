@@ -29,10 +29,45 @@ test('supports every separator and keeps hyphenated words whole', () => {
   ]);
 });
 
-test('level line variants and custom categories', () => {
-  const { words, newCategories } = parseWordList('Level B2\nder Ast - branch\n# A1\ndie Tür - door\n# Travel\nder Zug - train\ndas Ticket - ticket (A2)', ['A1', 'A2', 'B1', 'B2']);
-  assert.deepEqual(words.map((w) => w.level), ['B2', 'A1', 'Travel', 'A2']);
-  assert.deepEqual(newCategories, ['Travel']);
+test('level lines set the category; other headings start a topic', () => {
+  const { words, newCategories, topics } = parseWordList('Level B2\nder Ast - branch\n# A1\ndie Tür - door\n# Travel\nder Zug - train\ndas Ticket - ticket (A2)\n# C1\ndie Muße - leisure', ['A1', 'A2', 'B1', 'B2']);
+  assert.deepEqual(words.map((w) => [w.level, w.topic]), [['B2', ''], ['A1', ''], ['A1', 'Travel'], ['A2', 'Travel'], ['C1', 'Travel']]);
+  assert.deepEqual(newCategories, ['C1']);
+  assert.deepEqual(topics, ['Travel']);
+});
+
+test('a structured list with numbered headings (English first)', () => {
+  const text = `# German Vocabulary – English to German
+
+## 1. Time Expressions – Zeitangaben
+
+Today – Heute
+
+Tomorrow – Morgen
+
+## 2. Parts of the Day – Tageszeiten
+
+Morning – Morgen
+
+## 4. The 12 Months – Die 12 Monate
+
+January – Der Januar
+
+The months (plural) – Die Monate
+
+Greetings:
+Hello – Hallo`;
+  const { words, unparsed, topics } = parseWordList(text, ['A1', 'A2', 'B1', 'B2'], 'A1', 'en-de');
+  assert.deepEqual(unparsed, []);
+  assert.deepEqual(topics, ['German Vocabulary – English to German', 'Time Expressions – Zeitangaben', 'Parts of the Day – Tageszeiten', 'The 12 Months – Die 12 Monate', 'Greetings']);
+  assert.deepEqual(words.map((w) => [w.article, w.german, w.english, w.topic, w.level]), [
+    ['', 'Heute', 'Today', 'Time Expressions – Zeitangaben', 'A1'],
+    ['', 'Morgen', 'Tomorrow', 'Time Expressions – Zeitangaben', 'A1'],
+    ['', 'Morgen', 'Morning', 'Parts of the Day – Tageszeiten', 'A1'],
+    ['der', 'Januar', 'January', 'The 12 Months – Die 12 Monate', 'A1'],
+    ['die', 'Monate', 'The months (plural)', 'The 12 Months – Die 12 Monate', 'A1'],
+    ['', 'Hallo', 'Hello', 'Greetings', 'A1'],
+  ]);
 });
 
 test('known custom category without # and trailing tag', () => {

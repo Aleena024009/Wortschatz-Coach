@@ -21,7 +21,7 @@ export function mergeWords(local, remote, now = Date.now()) {
   const seen = new Set();
   const live = [...byId.values()].filter((w) => !w.deleted).sort((a, b) => (a.added || 0) - (b.added || 0));
   for (const w of live) {
-    const key = normalizeKey(w.article, w.german);
+    const key = normalizeKey(w.article, w.german, w.english);
     if (!seen.has(key)) {
       seen.add(key);
       continue;

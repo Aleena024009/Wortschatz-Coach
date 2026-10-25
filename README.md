@@ -8,23 +8,27 @@ Plain HTML/CSS/JS. There's no build step and no framework.
 
 The app has four sections: **Words** (your list, filtered by category, with search), **Add** (pick a category, then add one word or paste a list), **Practice** (flashcards) and **Settings**. On phones these are a bottom bar; on PC they're tabs at the top.
 
-- **Word list**: paste or upload a `.txt` file, one word per line, German first:
+- **Word list**: paste or upload a `.txt` file, one word per line. English first is the default; a switch above the box changes it to German first:
   ```
-  A1
-  der Hund - dog
-  gehen - to go
-  A2
-  die Erfahrung = experience
-  sich beschweren - to complain (B1)
-  # Travel
-  der Bahnhof - station | Der Bahnhof ist groß.
+  ## 1. Time Expressions – Zeitangaben
+  Today – Heute
+  Tomorrow – Morgen
+
+  ## 4. The 12 Months – Die 12 Monate
+  January – Der Januar
+  The months (plural) – Die Monate
+
+  B1
+  to complain - sich beschweren
+  dog - der Hund (A2) | Der Hund bellt.
   ```
+  - **Topics**: a heading (`# …`, `## …`, numbering is removed) or a line ending in `:` groups the words below it. The Words page shows each topic as a section, and Words and Practice have a topic filter. In the single-word form, the optional *Topic* field does the same.
   - Separators: ` - `, ` – `, `=`, `: ` or a tab. A hyphen inside a word (`E-Mail`) does not split.
-  - A line with only a level (`A1`, `Level A1`, `# A1`) sets the category for the words below it. A trailing `(B1)` or `[B1]` overrides it for one line.
+  - Words go to the category picked on the Add screen. A line with only a level (`A1`, `Level A1`, `# A1`) changes it for the words below; a trailing `(B1)` or `[B1]` changes it for one line.
   - `der/die/das` is detected and shown smaller before the noun.
-  - Optional example sentence after ` | `.
-  - Words already in your list are skipped.
-- **Categories**: the app starts with A1, A2, B1 and B2. On the **Add** screen you pick the category first, and new words go there. Add more categories (C1, C2, "Travel", anything) with **+ New**, in Settings, or with a `# Name` line in a list. Tap a word's coloured badge to move it to another category. Each category has its own colour and a filter chip with a count.
+  - Optional German example sentence after ` | `.
+  - A word already in your list (same German **and** English) is skipped, so "Morgen = tomorrow" and "Morgen = morning" are both kept.
+- **Categories**: the app starts with A1, A2, B1 and B2. On the **Add** screen you pick the category first, and new words go there. Add more categories (C1, C2, "Travel", anything) with **+ New** or in Settings. Tap a word's coloured badge to move it to another category. Each category has its own colour and a filter chip with a count.
 - **Pronunciation**: the speaker button plays a **real recording by a native speaker** from Wiktionary / Wikimedia Commons (free, no key, needs internet). If a word has no recording, it uses the browser's built-in German voice (`speechSynthesis`, `de-DE`), which is free and runs on your device. Example sentences and "Read text aloud" always use the device voice. You can switch to the device voice for everything in Settings, and choose the voice and speed (Slow / Normal / Fast).
   - **Brave and Firefox on Linux usually have no voices at all.** Words still play recordings, but for sentences use Chrome or Edge on PC.
 - **Respelling**: a rule-based guess, marked with **≈**. It handles most everyday words but can be wrong for compounds and loanwords. The optional AI helper replaces it with a checked respelling and IPA.

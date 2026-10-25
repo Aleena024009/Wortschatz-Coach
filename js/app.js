@@ -36,7 +36,7 @@ function loadSettings() {
 }
 
 const settings = Object.assign(
-  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '' },
+  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '' },
   loadSettings(),
 );
 const state = {
@@ -379,7 +379,37 @@ function inCategory(list) {
 function searched(list) {
   const q = state.search.trim().toLowerCase();
   if (!q) return list;
-  return list.filter((w) => fullGerman(w).toLowerCase().includes(q) || w.english.toLowerCase().includes(q));
+  return list.filter((w) => fullGerman(w).toLowerCase().includes(q) || w.english.toLowerCase().includes(q) || (w.topic || '').toLowerCase().includes(q));
+}
+
+// Topics in list order (a pasted list keeps its heading order); words without one come last.
+function topicNames() {
+  const names = [...new Set(state.words.map((w) => w.topic || ''))];
+  return [...names.filter(Boolean), ...names.filter((t) => !t)];
+}
+
+function inTopic(list) {
+  if (settings.topic === 'all') return list;
+  return list.filter((w) => (w.topic || '') === settings.topic);
+}
+
+function renderTopicSelect(select) {
+  const names = topicNames();
+  if (settings.topic !== 'all' && !names.includes(settings.topic)) settings.topic = 'all';
+  const count = (t) => state.words.filter((w) => (w.topic || '') === t).length;
+  select.hidden = !names.some(Boolean);
+  select.replaceChildren(
+    h('option', { value: 'all' }, 'All topics'),
+    ...names.map((t) => h('option', { value: t }, `${t || 'Other words'} (${count(t)})`)),
+  );
+  select.value = settings.topic;
+}
+
+function setTopic(value) {
+  settings.topic = value;
+  saveSettings();
+  state.fc.index = 0;
+  refresh();
 }
 
 function renderCatTabs(container) {
@@ -751,12 +781,22 @@ function setTheme(choice) {
 function renderWords() {
   renderVoiceBanner();
   renderCatTabs($('cat-tabs'));
+  renderTopicSelect($('topic-filter'));
   $('examples-note').hidden = state.words.length > 0;
-  const list = searched(inCategory(visibleSource()));
+  const list = searched(inTopic(inCategory(visibleSource())));
   const emptyText = state.search ? `No words match “${state.search}”.` : 'No words in this category yet.';
-  $('word-list').replaceChildren(
-    ...(list.length || !state.words.length ? list.map(wordCard) : [h('li', { class: 'empty' }, emptyText)]),
-  );
+  if (!list.length) {
+    $('word-list').replaceChildren(...(state.words.length ? [h('li', { class: 'empty' }, emptyText)] : []));
+    return;
+  }
+  // Group the cards under their topic headings.
+  const groups = new Map(topicNames().map((t) => [t, []]));
+  list.forEach((w) => groups.get(w.topic || '').push(w));
+  const withTopics = topicNames().some(Boolean);
+  $('word-list').replaceChildren(...[...groups].filter(([, ws]) => ws.length).flatMap(([topic, ws]) => [
+    withTopics ? h('li', { class: 'topic-head' }, h('h3', {}, topic || 'Other words'), h('span', { class: 'count' }, plural(ws.length, 'word'))) : null,
+    ...ws.map(wordCard),
+  ]).filter(Boolean));
 }
 
 // ---------- add ----------
@@ -796,22 +836,23 @@ function renderAdd() {
     ? 'dog - der Hund\nto go - gehen\nexperience = die Erfahrung\nto complain - sich beschweren'
     : 'der Hund - dog\ngehen - to go\ndie Erfahrung = experience\nsich beschweren - to complain';
   $('recent').replaceChildren(...state.recent.map((r) => h('li', {}, r)));
+  $('topic-list').replaceChildren(...topicNames().filter(Boolean).map((t) => h('option', { value: t })));
 }
 
 function addWords(items) {
-  const existing = new Set(state.words.map((w) => normalizeKey(w.article, w.german)));
+  const existing = new Set(state.words.map((w) => normalizeKey(w.article, w.german, w.english)));
   const fresh = [];
   let duplicates = 0;
   const now = Date.now();
   for (const item of items) {
-    const key = normalizeKey(item.article, item.german);
+    const key = normalizeKey(item.article, item.german, item.english);
     if (!item.german || existing.has(key)) {
       duplicates++;
       continue;
     }
     existing.add(key);
     // Earlier lines get a slightly newer timestamp so a pasted list keeps its order at the top.
-    fresh.push({ ipa: '', respelling: '', example: '', pos: '', level: '', ...item, id: uid(), added: now - fresh.length });
+    fresh.push({ ipa: '', respelling: '', example: '', pos: '', level: '', topic: '', ...item, id: uid(), added: now - fresh.length });
   }
   ensureCategories(fresh.map((w) => w.level).filter(Boolean));
   state.words.push(...fresh);
@@ -829,16 +870,18 @@ function addSingle(e) {
   const { article, german } = splitArticle(germanIn.value.trim().replace(/\s+/g, ' '));
   const english = englishIn.value.trim();
   if (!german || !english) return;
+  // The topic stays filled in, so several words can be added under the same topic.
+  const topic = $('in-topic').value.trim().slice(0, 80);
   const { added } = addWords([{
-    article, german, english,
+    article, german, english, topic,
     example: exampleIn.value.trim(),
     level: settings.addCategory,
     pos: guessPos(article, german, english),
   }]);
   const label = article ? `${article} ${german}` : german;
   if (added) {
-    $('single-msg').textContent = `Added “${label}” to ${settings.addCategory || 'your list'}.`;
-    state.recent.unshift(`${label} → ${settings.addCategory || 'No level'}`);
+    $('single-msg').textContent = `Added “${label}” to ${settings.addCategory || 'your list'}${topic ? ` · ${topic}` : ''}.`;
+    state.recent.unshift(`${label} → ${settings.addCategory || 'No level'}${topic ? ` · ${topic}` : ''}`);
     state.recent = state.recent.slice(0, 8);
     germanIn.value = '';
     englishIn.value = '';
@@ -855,7 +898,8 @@ function addFromDraft() {
   const parsed = parseWordList(text, categoryNames(), settings.addCategory, settings.listOrder);
   ensureCategories(parsed.newCategories);
   const { added, duplicates } = addWords(parsed.words);
-  const parts = [`Added ${plural(added, 'word')}.`];
+  const topicCount = new Set(parsed.words.map((w) => w.topic).filter(Boolean)).size;
+  const parts = [`Added ${plural(added, 'word')}${topicCount ? ` in ${plural(topicCount, 'topic')}` : ''}.`];
   if (parsed.newCategories.length) parts.push(`New categories: ${parsed.newCategories.join(', ')}.`);
   if (duplicates) parts.push(`Skipped ${duplicates} already in your list.`);
   if (parsed.unparsed.length) parts.push(`${plural(parsed.unparsed.length, 'line')} not understood.`);
@@ -918,7 +962,7 @@ async function toggleReadAloud() {
 // ---------- practice ----------
 
 function buildDeck() {
-  const ids = inCategory(visibleSource()).map((w) => w.id);
+  const ids = inTopic(inCategory(visibleSource())).map((w) => w.id);
   const keep = state.fc.order.filter((id) => ids.includes(id));
   state.fc.order = keep.length === ids.length ? keep : ids;
   state.fc.index = Math.min(state.fc.index, Math.max(0, state.fc.order.length - 1));
@@ -930,6 +974,7 @@ function currentCard() {
 
 function renderPractice() {
   renderCatTabs($('cat-tabs-practice'));
+  renderTopicSelect($('topic-filter-practice'));
   const el = $('flashcard');
   const { order, index, revealed } = state.fc;
   const w = currentCard();
@@ -943,6 +988,7 @@ function renderPractice() {
   el.replaceChildren(
     h('div', { class: 'progress' }, `${index + 1} / ${order.length}`),
     h('span', { class: `badge ${colorClass(w.level)}` }, w.level || 'No level'),
+    w.topic ? h('div', { class: 'fc-topic' }, w.topic) : null,
     h('div', { class: 'word', lang: 'de' }, w.article ? h('span', { class: 'article' }, w.article) : null, w.german),
     playButton(w, source),
     source,
@@ -1268,6 +1314,8 @@ async function init() {
 
   document.querySelectorAll('.nav button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
   document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => setView(b.dataset.goto)));
+  $('topic-filter').addEventListener('change', (e) => setTopic(e.target.value));
+  $('topic-filter-practice').addEventListener('change', (e) => setTopic(e.target.value));
   $('search').addEventListener('input', (e) => {
     state.search = e.target.value;
     renderWords();

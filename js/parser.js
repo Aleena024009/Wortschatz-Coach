@@ -1,18 +1,29 @@
 // Parses a pasted word list ("der Hund - dog") into word objects.
-// A word's `level` is the name of its category (A1, B2, or a custom one like "Travel").
+// A word's `level` is the name of its category (A1, B2, or a custom one like "Travel");
+// its `topic` is the heading it was listed under ("Time Expressions – Zeitangaben").
 
 export const CEFR = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
 const CEFR_LINE = /^#*\s*(?:level|niveau|stufe)?\s*(A1|A2|B1|B2|C1|C2)\s*[:#]*\s*$/i;
-const HEADER_LINE = /^#+\s*([^#:\t=]{1,30}?)\s*[:#]*\s*$/;
+// "## 1. Time Expressions – Zeitangaben": a Markdown heading is never a word.
+const HEADING = /^#{1,6}\s*(.+?)\s*#*\s*$/;
+// "Time Expressions:" on its own line also starts a topic.
+const COLON_HEADING = /^([^:=\t|]{2,80}):$/;
 const TAG = /\s*[([]\s*([^()[\]]{1,30}?)\s*[)\]]\s*$/;
 // Tab, a dash with spaces on both sides (so "E-Mail" stays whole), "=", or ": ".
 const SEPARATOR = /\t+|\s+[-–—]\s+|\s*=\s*|:\s+/;
 const EXAMPLE_SEP = /\s+\|\s+/;
 const ARTICLE = /^(der|die|das)\s+(.+)$/i;
 
-export function normalizeKey(article, german) {
-  return `${article || ''} ${german}`.trim().toLowerCase().replace(/\s+/g, ' ');
+// Identity of a word for spotting duplicates. The English meaning is part of it, so
+// "Morgen = morning" and "Morgen = tomorrow" are kept as two words.
+export function normalizeKey(article, german, english = '') {
+  return `${article || ''} ${german} | ${english}`.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// "1. Time Expressions – Zeitangaben" -> "Time Expressions – Zeitangaben"
+export function cleanTopic(text) {
+  return stripNumbering(text.replace(/[*_]+/g, '').trim()).replace(/^\d+\s*[.)]?\s*/, '').trim().slice(0, 80);
 }
 
 export function guessPos(article, german, english) {
@@ -40,15 +51,17 @@ export function matchCategory(name, categories) {
   return categories.find((c) => c.toLowerCase() === n) || '';
 }
 
-// Returns { words, unparsed, newCategories }. `categories` is the list of existing category names;
-// words before any level line go to `defaultLevel`. `order` says which language comes first on
-// a line: 'de-en' ("der Hund - dog") or 'en-de' ("dog - der Hund").
-export function parseWordList(text, categories = [], defaultLevel = '', order = 'de-en') {
+// Returns { words, unparsed, newCategories, topics }. `categories` is the list of existing
+// category names; words before any level line go to `defaultLevel`. `order` says which language
+// comes first on a line: 'de-en' ("der Hund - dog") or 'en-de' ("dog - der Hund").
+export function parseWordList(text, categories = [], defaultLevel = '', order = 'de-en', defaultTopic = '') {
   const words = [];
   const unparsed = [];
   const known = [...categories];
   const newCategories = [];
+  const topics = [];
   let level = defaultLevel;
+  let topic = defaultTopic;
 
   const useCategory = (name) => {
     if (!known.some((c) => c.toLowerCase() === name.toLowerCase())) {
@@ -67,15 +80,18 @@ export function parseWordList(text, categories = [], defaultLevel = '', order = 
       level = useCategory(cefrLine[1].toUpperCase());
       continue;
     }
-    const plain = line.replace(/^#+\s*/, '').replace(/[:#\s]+$/, '');
-    const knownLine = !SEPARATOR.test(line) && matchCategory(plain, known);
+    const heading = line.match(HEADING) || (!SEPARATOR.test(line) && line.match(COLON_HEADING));
+    const plain = (heading ? heading[1] : line).replace(/[:#\s]+$/, '');
+    // A heading or bare line naming one of your categories ("Travel", "# A2") sets the category.
+    const knownLine = (heading || !SEPARATOR.test(line)) && matchCategory(plain, known);
     if (knownLine) {
       level = knownLine;
       continue;
     }
-    const header = line.match(HEADER_LINE);
-    if (header) {
-      level = useCategory(header[1]);
+    // Any other heading starts a topic; the words below it belong to that topic.
+    if (heading) {
+      topic = cleanTopic(heading[1]);
+      if (topic && !topics.includes(topic)) topics.push(topic);
       continue;
     }
 
@@ -117,11 +133,12 @@ export function parseWordList(text, categories = [], defaultLevel = '', order = 
       article,
       english,
       level: lineLevel,
+      topic,
       pos: guessPos(article, german, english),
       example,
     });
   }
-  return { words, unparsed, newCategories };
+  return { words, unparsed, newCategories, topics };
 }
 
 // Unique German-looking words in free text, in order of appearance.
