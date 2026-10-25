@@ -636,3 +636,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card .word { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card .english { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-head { align-items: flex-start; }
+
+/* Practice: topic dropdown, and the sub-topic dropdown under it. */
+#view-practice .toolbar .topic-select { flex: 1 1 100%; }
+#view-practice .toolbar .sub-select { margin-left: 24px; flex-basis: calc(100% - 24px); position: relative; }

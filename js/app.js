@@ -422,24 +422,25 @@ function inTopic(list) {
   return list.filter((w) => (w.topic || '') === topic && (section === undefined || (w.subtopic || '') === section));
 }
 
-function renderTopicSelect(select) {
+// Practice filters: a topic dropdown, and under it a sub-topic dropdown for that topic.
+function renderTopicSelect(select, subSelect) {
   const names = topicNames();
-  const options = [h('option', { value: 'all' }, 'All topics')];
-  const values = ['all'];
-  for (const t of names) {
-    const inTopicWords = state.words.filter((w) => (w.topic || '') === t);
-    options.push(h('option', { value: t }, `${t || 'Other words'} (${inTopicWords.length})`));
-    values.push(t);
-    for (const sec of sectionNames(t).filter(Boolean)) {
-      const n = inTopicWords.filter((w) => w.subtopic === sec).length;
-      options.push(h('option', { value: t + SEP + sec }, `    › ${sec} (${n})`));
-      values.push(t + SEP + sec);
-    }
-  }
-  if (!values.includes(settings.topic)) settings.topic = 'all';
+  const [topic, section] = settings.topic.split(SEP);
+  const subs = topic === 'all' ? [] : sectionNames(topic).filter(Boolean);
+  if ((topic !== 'all' && !names.includes(topic)) || (section !== undefined && !subs.includes(section))) settings.topic = 'all';
+  const current = settings.topic.split(SEP);
+  const count = (list) => ` (${list.length})`;
   select.hidden = !names.some(Boolean);
-  select.replaceChildren(...options);
-  select.value = settings.topic;
+  select.replaceChildren(
+    h('option', { value: 'all' }, 'All topics'),
+    ...names.map((t) => h('option', { value: t }, (t || 'Other words') + count(state.words.filter((w) => (w.topic || '') === t)))));
+  select.value = current[0];
+  const shownSubs = current[0] === 'all' ? [] : sectionNames(current[0]).filter(Boolean);
+  subSelect.hidden = !shownSubs.length;
+  subSelect.replaceChildren(
+    h('option', { value: '' }, 'All sub-topics'),
+    ...shownSubs.map((sec) => h('option', { value: sec }, sec + count(state.words.filter((w) => (w.topic || '') === current[0] && w.subtopic === sec)))));
+  subSelect.value = current[1] || '';
 }
 
 // Topic dropdown on the Add page: "No topic", your topics, or "+ New topic…" with a name box.
@@ -1552,7 +1553,7 @@ function currentCard() {
 
 function renderPractice() {
   renderCatTabs($('cat-tabs-practice'));
-  renderTopicSelect($('topic-filter-practice'));
+  renderTopicSelect($('topic-filter-practice'), $('sub-filter-practice'));
   const el = $('flashcard');
   const { order, index, revealed } = state.fc;
   const w = currentCard();
@@ -1913,6 +1914,10 @@ async function init() {
   document.querySelectorAll('.nav button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
   document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => setView(b.dataset.goto)));
   $('topic-filter-practice').addEventListener('change', (e) => setTopic(e.target.value));
+  $('sub-filter-practice').addEventListener('change', (e) => {
+    const topic = $('topic-filter-practice').value;
+    setTopic(e.target.value ? topic + SEP + e.target.value : topic);
+  });
   $('fc-autoplay').addEventListener('change', (e) => {
     settings.autoplay = e.target.checked;
     saveSettings();
