@@ -45,6 +45,11 @@ test('words before any level line go to the selected category', () => {
   assert.deepEqual(words.map((w) => w.level), ['A2', 'B1']);
 });
 
+test('list numbering is removed and the article still detected', () => {
+  const { words } = parseWordList('1. Der Januar - January\n7) die Woche - week\ndie 12 Monate - the 12 months');
+  assert.deepEqual(words.map((w) => [w.article, w.german]), [['der', 'Januar'], ['die', 'Woche'], ['die', '12 Monate']]);
+});
+
 test('non-level brackets stay part of the meaning', () => {
   const { words } = parseWordList('na ja - well (informal)');
   assert.equal(words[0].english, 'well (informal)');

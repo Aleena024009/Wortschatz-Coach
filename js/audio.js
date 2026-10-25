@@ -15,7 +15,8 @@ function toMp3(url) {
 
 // Returns an MP3 URL for `german` (article and "sich" removed), or '' if Wiktionary has none.
 export async function findRecording(german) {
-  const word = german.replace(/^(der|die|das|sich)\s+/i, '').trim();
+  // "7. Der Juli" -> "Juli", "sich beschweren" -> "beschweren", "die 12 Monate" -> "Monate".
+  const word = german.replace(/^\s*\d+\s*[.)]\s+/, '').replace(/^(der|die|das|sich)\s+/i, '').replace(/^\d+\s+/, '').trim();
   if (!word || /\s/.test(word)) return '';
   const variants = [...new Set([word, word[0].toUpperCase() + word.slice(1), word[0].toLowerCase() + word.slice(1)])];
   const params = new URLSearchParams({

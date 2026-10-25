@@ -1,4 +1,4 @@
-import { CEFR, parseWordList, normalizeKey, uniqueTextWords, looksLikeProse, splitArticle, guessPos } from './parser.js';
+import { CEFR, parseWordList, normalizeKey, uniqueTextWords, looksLikeProse, splitArticle, guessPos, stripNumbering } from './parser.js';
 import { respell } from './respell.js';
 import * as speech from './speech.js';
 import * as audio from './audio.js';
@@ -10,6 +10,8 @@ const EXTRACT_BATCH = 80;
 const POS = ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'conjunction', 'pronoun', 'article', 'numeral', 'interjection', 'phrase', 'other'];
 const DEFAULT_CATEGORIES = ['A1', 'A2', 'B1', 'B2'].map((name, i) => ({ name, color: i + 1 }));
 const COLOR_COUNT = 10;
+// Bump to re-check recordings for words whose earlier lookup found nothing.
+const AUDIO_LOOKUP_VERSION = 2;
 // Recordings are spoken at natural speed, so "Normal" plays them unchanged.
 const RECORDING_RATE = { 0.6: 0.75, 0.85: 1, 1: 1.15 };
 
@@ -129,10 +131,11 @@ function say(text) {
 async function playWord(w, btn) {
   const wantRecording = settings.source === 'recording' || !hasGermanVoice();
   if (wantRecording && navigator.onLine) {
-    if (w.audio === undefined) {
+    if (w.audio === undefined || (!w.audio && w.audioV !== AUDIO_LOOKUP_VERSION)) {
       btn?.classList.add('loading');
       try {
         w.audio = await audio.findRecording(fullGerman(w));
+        w.audioV = AUDIO_LOOKUP_VERSION;
         if (!w.id.startsWith('ex')) persist(db.putWords([w]));
       } catch {
         /* lookup failed (network); try again next time */
@@ -797,6 +800,20 @@ function setupInstall() {
   });
 }
 
+// Lists saved before numbering was stripped kept it in the word ("7. Der Juli");
+// split it into article + word so it displays and plays properly.
+function repairNumberedWords() {
+  const fixed = [];
+  for (const w of state.words) {
+    if (w.article || stripNumbering(w.german) === w.german) continue;
+    Object.assign(w, splitArticle(w.german));
+    if (w.article && !w.pos) w.pos = 'noun';
+    delete w.audio;
+    fixed.push(w);
+  }
+  if (fixed.length) persist(db.putWords(fixed));
+}
+
 // ---------- wiring ----------
 
 function onKey(e) {
@@ -823,6 +840,7 @@ async function init() {
     state.categories = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
     saveCategories();
   }
+  repairNumberedWords();
   sortWords();
 
   document.querySelectorAll('.nav button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));

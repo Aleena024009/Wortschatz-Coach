@@ -21,7 +21,13 @@ export function guessPos(article, german, english) {
   return '';
 }
 
+// Removes list numbering such as "7. " or "7) " (but keeps "12 Monate").
+export function stripNumbering(text) {
+  return text.replace(/^\s*\d+\s*[.)]\s+/, '');
+}
+
 export function splitArticle(german) {
+  german = stripNumbering(german);
   const m = german.match(ARTICLE);
   return m ? { article: m[1].toLowerCase(), german: m[2].trim() } : { article: '', german: german.trim() };
 }
