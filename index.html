@@ -102,9 +102,9 @@
             <input id="in-german" lang="de" placeholder="der Hund" required autocapitalize="off" spellcheck="false">
           </label>
           <label class="field">
-            <span>Topic <em>(optional, e.g. Time Expressions)</em></span>
-            <input id="in-topic" list="topic-list" placeholder="Time Expressions" autocomplete="off">
-            <datalist id="topic-list"></datalist>
+            <span>Topic <em>(optional)</em></span>
+            <select id="in-topic-select" class="topic-pick"></select>
+            <input id="in-topic" class="topic-new" placeholder="Name of the new topic, e.g. Time Expressions" autocomplete="off" hidden>
           </label>
           <label class="field">
             <span>Example sentence <em>(optional)</em></span>
@@ -126,8 +126,9 @@
           </div>
         </div>
         <label class="field">
-          <span>Topic for these words <em>(optional, e.g. Days of the Week)</em></span>
-          <input id="bulk-topic" list="topic-list" placeholder="Days of the Week" autocomplete="off">
+          <span>Topic for these words <em>(optional)</em></span>
+          <select id="bulk-topic-select" class="topic-pick"></select>
+          <input id="bulk-topic" class="topic-new" placeholder="Name of the new topic, e.g. Days of the Week" autocomplete="off" hidden>
         </label>
         <p class="hint">One word per line, for example <code id="order-example">dog - der Hund</code>. Words go to the category and topic above, unless the list itself has a line like <code>B1</code> or a heading like <code>## Months</code>.</p>
         <label for="draft" class="sr-only">Word list or German text</label>

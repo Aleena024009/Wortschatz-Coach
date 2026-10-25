@@ -438,3 +438,15 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fc-topic { color: var(--muted); font-size: 0.9rem; font-weight: 600; }
 #view-practice .toolbar { margin-bottom: 14px; }
 #view-practice .toolbar .cat-tabs { margin-bottom: 0; }
+
+/* Topic dropdowns */
+.topic-new { margin-top: 8px; }
+.topic-mini {
+  width: auto; field-sizing: content; max-width: 170px; min-height: 30px; height: 30px; padding: 0 22px 0 10px;
+  border-radius: 7px; font-size: 0.8rem; font-weight: 600; color: var(--muted); background-color: var(--surface-2); border: 0;
+  text-overflow: ellipsis;
+}
+.topic-head .link-btn { font-size: 0.85rem; margin-left: auto; }
+/* Category chips get their own row; topic and search share the next one. */
+.toolbar .cat-tabs { flex-basis: 100%; }
+.toolbar .topic-select { flex: 1 1 220px; max-width: none; }

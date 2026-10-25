@@ -405,6 +405,34 @@ function renderTopicSelect(select) {
   select.value = settings.topic;
 }
 
+// Topic dropdown on the Add page: "No topic", your topics, or "+ New topic…" with a name box.
+const NEW_TOPIC = '\u0000new';
+function renderTopicPicker(id) {
+  const select = $(`${id}-select`);
+  const input = $(id);
+  const current = select.value;
+  const names = topicNames().filter(Boolean);
+  select.replaceChildren(
+    h('option', { value: '' }, 'No topic'),
+    ...names.map((t) => h('option', { value: t }, t)),
+    h('option', { value: NEW_TOPIC }, '+ New topic…'),
+  );
+  let value = current;
+  if (value === NEW_TOPIC && !input.value && names.includes(input.dataset.last)) value = input.dataset.last;
+  if (value !== NEW_TOPIC && !names.includes(value)) value = '';
+  select.value = value;
+  input.hidden = value !== NEW_TOPIC;
+}
+
+function pickedTopic(id) {
+  const select = $(`${id}-select`);
+  const topic = (select.value === NEW_TOPIC ? $(id).value : select.value).trim().slice(0, 80);
+  // After adding, a new topic becomes a normal choice in the dropdown.
+  $(id).dataset.last = topic;
+  if (select.value === NEW_TOPIC && topic) $(id).value = '';
+  return topic;
+}
+
 function setTopic(value) {
   settings.topic = value;
   saveSettings();
@@ -544,13 +572,52 @@ function levelSelect(w) {
   h('option', { value: '', selected: !w.level }, 'No level'));
 }
 
+function topicSelect(w) {
+  const names = topicNames().filter(Boolean);
+  return h('select', {
+    class: 'topic-mini',
+    'aria-label': `Topic of ${fullGerman(w)}`,
+    title: 'Move to another topic',
+    onchange: (e) => {
+      let topic = e.target.value;
+      if (topic === NEW_TOPIC) {
+        topic = (prompt('Name of the new topic:') || '').trim().slice(0, 80);
+        if (!topic) {
+          e.target.value = w.topic || '';
+          return;
+        }
+      }
+      w.topic = topic;
+      saveWords([w]);
+      refresh();
+    },
+  },
+  h('option', { value: '', selected: !w.topic }, 'No topic'),
+  ...names.map((t) => h('option', { value: t, selected: t === w.topic }, t)),
+  h('option', { value: NEW_TOPIC }, '+ New topic…'));
+}
+
+function renameTopic(old) {
+  const name = (prompt(`New name for the topic “${old}”:`, old) || '').trim().slice(0, 80);
+  if (!name || name === old) return;
+  const words = state.words.filter((w) => (w.topic || '') === old);
+  words.forEach((w) => { w.topic = name; });
+  if (settings.topic === old) {
+    settings.topic = name;
+    saveSettings();
+  }
+  saveWords(words);
+  refresh();
+  toast(`Renamed to “${name}”.`);
+}
+
 function wordCard(w) {
   const source = sourceLine(w);
   return h('li', { class: `card ${colorClass(w.level)}` },
     h('div', { class: 'card-head' },
       h('div', { class: 'text' },
         h('div', { class: 'word', lang: 'de' }, w.article ? h('span', { class: 'article' }, w.article) : null, w.german),
-        h('div', { class: 'english' }, w.english),
+        h('div', { class: 'english' }, w.english, w.pos ? h('span', { class: 'pos' }, ` · ${w.pos}`) : null),
       ),
       playButton(w, source),
     ),
@@ -559,7 +626,7 @@ function wordCard(w) {
     exampleRow(w, source),
     h('div', { class: 'card-foot' },
       levelSelect(w),
-      w.pos ? h('span', { class: 'pos' }, w.pos) : null,
+      topicSelect(w),
       h('span', { class: 'spacer' }),
       h('button', { class: 'icon-btn small remove', icon: 'trash', 'aria-label': `Remove ${fullGerman(w)}`, onclick: () => removeWord(w.id) }),
     ),
@@ -794,7 +861,11 @@ function renderWords() {
   list.forEach((w) => groups.get(w.topic || '').push(w));
   const withTopics = topicNames().some(Boolean);
   $('word-list').replaceChildren(...[...groups].filter(([, ws]) => ws.length).flatMap(([topic, ws]) => [
-    withTopics ? h('li', { class: 'topic-head' }, h('h3', {}, topic || 'Other words'), h('span', { class: 'count' }, plural(ws.length, 'word'))) : null,
+    withTopics ? h('li', { class: 'topic-head' },
+      h('h3', {}, topic || 'Other words'),
+      h('span', { class: 'count' }, plural(ws.length, 'word')),
+      topic ? h('button', { class: 'link-btn', onclick: () => renameTopic(topic) }, 'Rename') : null,
+    ) : null,
     ...ws.map(wordCard),
   ]).filter(Boolean));
 }
@@ -836,7 +907,8 @@ function renderAdd() {
     ? 'dog - der Hund\nto go - gehen\nexperience = die Erfahrung\nto complain - sich beschweren'
     : 'der Hund - dog\ngehen - to go\ndie Erfahrung = experience\nsich beschweren - to complain';
   $('recent').replaceChildren(...state.recent.map((r) => h('li', {}, r)));
-  $('topic-list').replaceChildren(...topicNames().filter(Boolean).map((t) => h('option', { value: t })));
+  renderTopicPicker('in-topic');
+  renderTopicPicker('bulk-topic');
 }
 
 function addWords(items) {
@@ -879,7 +951,7 @@ function addSingle(e) {
   const english = englishIn.value.trim();
   if (!german || !english) return;
   // The topic stays filled in, so several words can be added under the same topic.
-  const topic = $('in-topic').value.trim().slice(0, 80);
+  const topic = pickedTopic('in-topic');
   const { added } = addWords([{
     article, german, english, topic,
     example: exampleIn.value.trim(),
@@ -903,7 +975,7 @@ function addSingle(e) {
 
 function addFromDraft() {
   const text = $('draft').value;
-  const parsed = parseWordList(text, categoryNames(), settings.addCategory, settings.listOrder, $('bulk-topic').value.trim().slice(0, 80));
+  const parsed = parseWordList(text, categoryNames(), settings.addCategory, settings.listOrder, pickedTopic('bulk-topic'));
   ensureCategories(parsed.newCategories);
   const { added, duplicates } = addWords(parsed.words);
   const topicCount = new Set(parsed.words.map((w) => w.topic).filter(Boolean)).size;
@@ -1330,6 +1402,12 @@ async function init() {
   });
 
   $('single-form').addEventListener('submit', addSingle);
+  for (const id of ['in-topic', 'bulk-topic']) {
+    $(`${id}-select`).addEventListener('change', (e) => {
+      $(id).hidden = e.target.value !== NEW_TOPIC;
+      if (!$(id).hidden) $(id).focus();
+    });
+  }
   document.querySelectorAll('#order-group button').forEach((b) => b.addEventListener('click', () => {
     settings.listOrder = b.dataset.order;
     saveSettings();
