@@ -53,7 +53,7 @@ function loadSettings() {
 }
 
 const settings = Object.assign(
-  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '', autoplay: true, shuffle: false },
+  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '', autoplay: true, shuffle: false, showAnswers: true },
   loadSettings(),
 );
 const state = {
@@ -1555,12 +1555,15 @@ function renderPractice() {
   renderCatTabs($('cat-tabs-practice'));
   renderTopicSelect($('topic-filter-practice'), $('sub-filter-practice'));
   const el = $('flashcard');
-  const { order, index, revealed } = state.fc;
+  const { order, index } = state.fc;
+  // "Show answers" on: every card shows its meaning; off: press Show answer per card.
+  const revealed = settings.showAnswers || state.fc.revealed;
   const w = currentCard();
   ['fc-prev', 'fc-next', 'fc-shuffle'].forEach((id) => { $(id).disabled = order.length < 2; });
   $('fc-shuffle').setAttribute('aria-pressed', String(!!settings.shuffle));
   $('fc-shuffle').textContent = `Shuffle: ${settings.shuffle ? 'on' : 'off'}`;
   $('fc-autoplay').checked = settings.autoplay;
+  $('fc-answers').checked = settings.showAnswers;
   el.className = `flashcard ${w ? colorClass(w.level) : ''}`;
   if (!w) {
     el.replaceChildren(h('p', { class: 'empty' }, state.words.length ? 'No words in this category yet.' : 'Add some words first, then practise them here.'));
@@ -1882,7 +1885,10 @@ function onKey(e) {
   if (state.view !== 'practice' || e.target.closest('input, textarea, select')) return;
   if (e.key === 'ArrowRight') stepCard(1);
   else if (e.key === 'ArrowLeft') stepCard(-1);
-  else if (e.key === ' ' && !state.fc.revealed) { e.preventDefault(); reveal(); }
+  else if (e.key === ' ') {
+    e.preventDefault();
+    $('fc-answers').click();
+  }
   else if (e.key.toLowerCase() === 'l') {
     const w = currentCard();
     if (w) playWord(w, null, $('flashcard').querySelector('.source'));
@@ -1917,6 +1923,12 @@ async function init() {
   $('sub-filter-practice').addEventListener('change', (e) => {
     const topic = $('topic-filter-practice').value;
     setTopic(e.target.value ? topic + SEP + e.target.value : topic);
+  });
+  $('fc-answers').addEventListener('change', (e) => {
+    settings.showAnswers = e.target.checked;
+    state.fc.revealed = false;
+    saveSettings();
+    renderPractice();
   });
   $('fc-autoplay').addEventListener('change', (e) => {
     settings.autoplay = e.target.checked;

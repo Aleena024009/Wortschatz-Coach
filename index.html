@@ -203,8 +203,11 @@
         <button class="btn" id="fc-shuffle">Shuffle</button>
         <button class="btn primary" id="fc-next">Next<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
       </div>
-      <label class="autoplay-toggle"><input type="checkbox" id="fc-autoplay" checked> Auto-play the word on each card</label>
-      <p class="hint center keys-hint">Keyboard: Space = show answer · ← → = back / next · L = listen</p>
+      <div class="fc-switches">
+        <label class="autoplay-toggle"><input type="checkbox" id="fc-answers" checked> Show answers</label>
+        <label class="autoplay-toggle"><input type="checkbox" id="fc-autoplay" checked> Auto-play the word</label>
+      </div>
+      <p class="hint center keys-hint">Keyboard: Space = show / hide answers · ← → = back / next · L = listen</p>
     </section>
 
     <!-- SETTINGS -->
