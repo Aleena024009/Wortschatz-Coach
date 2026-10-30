@@ -11,6 +11,11 @@ const FIXED = {
   ein: 'eyen', eine: 'eye-nuh', einen: 'eye-nun', sich: 'zikh', zu: 'tsoo',
   und: 'oont', ich: 'ikh', ist: 'ist', nicht: 'nikht', mit: 'mit', es: 'es',
 };
+// German names of single letters, for things like "W-Fragen" or "U-Bahn".
+const LETTERS = {
+  a: 'ah', b: 'bay', c: 'tsay', d: 'day', e: 'ay', f: 'ef', g: 'gay', h: 'hah', i: 'ee', j: 'yot', k: 'kah', l: 'el', m: 'em',
+  n: 'en', o: 'oh', p: 'pay', q: 'koo', r: 'er', s: 'es', t: 'tay', u: 'oo', v: 'fow', w: 'vay', x: 'iks', y: 'IP-see-lon', z: 'tset',
+};
 const LOWERCASE_WORDS = new Set(['der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einen', 'sich', 'zu']);
 const SHORT_MONO = new Set(['mit', 'in', 'im', 'an', 'am', 'um', 'ab', 'ob', 'es', 'das', 'was', 'hat', 'bis', 'von', 'man', 'bin', 'hin', 'zum', 'weg', 'des', 'ins']);
 
@@ -171,6 +176,7 @@ function respellWord(raw) {
   const word = raw.toLowerCase().replace(/[^a-zäöüß-]/g, '');
   if (!word) return '';
   if (FIXED[word]) return LOWERCASE_WORDS.has(word) ? FIXED[word] : FIXED[word].toUpperCase();
+  if (word.length === 1 && LETTERS[word]) return LETTERS[word].toUpperCase();
   if (word.includes('-')) return word.split('-').filter(Boolean).map(respellWord).join(' ');
 
   for (const [prefix, sound] of Object.entries(PREFIXES)) {

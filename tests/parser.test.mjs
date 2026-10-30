@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseWordList, uniqueTextWords, looksLikeProse } from '../js/parser.js';
+import { parseWordList, uniqueTextWords, looksLikeProse, germanPart } from '../js/parser.js';
 import { respell } from '../js/respell.js';
 
 test('parses the example list with levels, articles and overrides', () => {
@@ -148,4 +148,18 @@ test('respelling', () => {
   assert.equal(respell('sich beschweren'), 'zikh buh-SHVAY-run');
   assert.equal(respell('Zeitung'), 'TSY-toong');
   assert.equal(respell('Eins'), 'EYNS');
+  assert.equal(respell('W-Fragen'), 'VAY FRAH-gun');
+});
+
+test('finds the German half of a topic name on either side', () => {
+  const names = {
+    'Question Words – W-Fragen': 'W-Fragen', 'Verbs – Verben': 'Verben', 'Family – Die Familie': 'Die Familie',
+    'Colours – Die Farben': 'Die Farben', 'The Seasons – Die Jahreszeiten': 'Die Jahreszeiten', 'The Numbers – Die Zahlen': 'Die Zahlen',
+    'The German Alphabets – Das deutsche Buchstaben': 'Das deutsche Buchstaben', 'Weekend – Das Wochenende': 'Das Wochenende',
+    'Days of the Week – Die Wochentage': 'Die Wochentage', 'The Twelve Months – Die Zwölf Monate': 'Die Zwölf Monate',
+    'Greetings and Farewells – Begrüßungen und Verabschiedungen': 'Begrüßungen und Verabschiedungen',
+    'Parts of the Day – Tageszeiten': 'Tageszeiten', 'Time Expressions – Zeitangaben': 'Zeitangaben',
+    'W-fragen – W-questions': 'W-fragen', 'Zeitangaben – Time Expressions': 'Zeitangaben', 'Numbers 0–20': '', 'Die Zahlen': 'Die Zahlen',
+  };
+  for (const [name, german] of Object.entries(names)) assert.equal(germanPart(name), german, name);
 });

@@ -1,4 +1,4 @@
-import { CEFR, parseWordList, normalizeKey, uniqueTextWords, looksLikeProse, splitArticle, guessPos, stripNumbering } from './parser.js';
+import { CEFR, parseWordList, normalizeKey, uniqueTextWords, looksLikeProse, splitArticle, guessPos, stripNumbering, germanPart } from './parser.js';
 import { respell } from './respell.js';
 import * as speech from './speech.js';
 import * as audio from './audio.js';
@@ -1048,11 +1048,13 @@ function setTheme(choice) {
 }
 
 // The German part of a topic title: "Time Expressions – Zeitangaben" -> "Zeitangaben".
+// Worked out from the words themselves, so it doesn't matter which side the German is on.
+let knownGerman = { words: null, set: new Set() };
 function topicGerman(topic) {
-  const parts = topic.split(/\s+[-–—]\s+/);
-  // A name without a dash counts as German when it looks German ("Die Zahlen", "Begrüßungen").
-  if (parts.length < 2) return /^(der|die|das|den|dem|ein|eine)\s|[äöüßÄÖÜ]/i.test(topic) ? topic.trim() : '';
-  return (settings.listOrder === 'en-de' ? parts.at(-1) : parts[0]).trim();
+  if (knownGerman.words !== state.words) {
+    knownGerman = { words: state.words, set: new Set(state.words.flatMap((w) => w.german.toLowerCase().split(/[\s-]+/))) };
+  }
+  return germanPart(topic, knownGerman.set);
 }
 
 // Topic names are spoken like words; this keeps one stand-in word per topic so a

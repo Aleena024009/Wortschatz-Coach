@@ -51,6 +51,31 @@ export function matchCategory(name, categories) {
   return categories.find((c) => c.toLowerCase() === n) || '';
 }
 
+// How German a short name looks: articles, umlauts and German spellings count for it,
+// English little words against it. `known` is a set of German words from your list.
+function germanScore(text, known) {
+  const t = text.trim();
+  let score = 0;
+  if (/^(der|die|das|den|dem|des|ein|eine)\s/i.test(t)) score += 3;
+  if (/[äöüßÄÖÜ]/.test(t)) score += 3;
+  if (/\b(the|of|and|to|a|an|in|for|with)\b/i.test(t)) score -= 3;
+  score += (t.toLowerCase().match(/sch|tz|ei|ie|ung\b|en\b|zw|ch/g) || []).length;
+  for (const word of t.toLowerCase().split(/[\s-]+/)) if (known?.has(word)) score += 2;
+  return score;
+}
+
+// The German half of "Question Words – W-Fragen" (or "W-Fragen – Question Words"),
+// whichever side it is on; '' when the name has no German part. A name without a dash
+// counts as German when it looks German ("Die Zahlen", "Begrüßungen").
+export function germanPart(name, known = new Set()) {
+  const parts = name.split(/\s+[-–—]\s+/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return /^(der|die|das|den|dem|ein|eine)\s|[äöüßÄÖÜ]/i.test(name) ? name.trim() : '';
+  const first = germanScore(parts[0], known);
+  const last = germanScore(parts.at(-1), known);
+  // A tie keeps the usual "English – German" order.
+  return first > last ? parts[0] : parts.at(-1);
+}
+
 // Heading depth: "#" = 1, "##" = 2 …; a line ending in ":" counts as the deepest kind.
 function headingDepth(line) {
   const hashes = line.match(/^#+/);
