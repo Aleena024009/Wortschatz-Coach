@@ -1,6 +1,6 @@
 // Free German neural voice ("Thorsten", Piper TTS, MIT/CC0) that runs inside the
 // browser, so every word and sentence can be spoken even when the browser has no
-// German voice (e.g. Brave or Firefox on Linux). The 63 MB model is downloaded
+// German voice (e.g. Brave or Firefox on Linux). The 63 MB model (plus the 11 MB engine runtime) is downloaded
 // once per device and kept in Cache Storage; each spoken phrase is cached too.
 
 const MODEL = 'https://huggingface.co/diffusionstudio/piper-voices/resolve/main/de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx';
@@ -9,9 +9,12 @@ const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/+esm';
 const ORT_WASM = 'https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/';
 const PHONEMIZE = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/dist/piper-DeOu3H9E.js';
 const PHONEMIZE_WASM = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize';
+// The engine's runtime is stored with the voice, so speaking never depends on a CDN being
+// reachable at that moment (single-threaded SIMD build: GitHub Pages can't enable threads).
+const RUNTIME = `${ORT_WASM}ort-wasm-simd.wasm`;
 const MODEL_CACHE = 'wortschatz-voice-model-v1';
 const AUDIO_CACHE = 'wortschatz-voice-audio-v2'; // v2: louder
-export const MODEL_SIZE_MB = 63;
+export const MODEL_SIZE_MB = 74; // 63 MB voice + 11 MB engine runtime
 // Spoken phrases are kept so they play instantly next time, but only the most recently used
 // ones: over 50 MB the oldest are dropped (down to 40 MB) and simply spoken again if needed.
 const AUDIO_LIMIT = 50 * 1024 * 1024;
@@ -53,7 +56,7 @@ async function fetchWithProgress(url, onProgress) {
 
 export async function download(onProgress) {
   const cache = await caches.open(MODEL_CACHE);
-  const [model, cfg] = await Promise.all([fetchWithProgress(MODEL, onProgress), fetchWithProgress(CONFIG)]);
+  const [model, cfg] = await Promise.all([fetchWithProgress(MODEL, onProgress), fetchWithProgress(CONFIG), saveRuntime(cache)]);
   await cache.put(CONFIG, new Response(cfg, { headers: { 'content-type': 'application/json' } }));
   await cache.put(MODEL, new Response(model, { headers: { 'content-type': 'application/octet-stream' } }));
 }
@@ -74,14 +77,26 @@ export function warmUp() {
   return load();
 }
 
+async function saveRuntime(cache) {
+  const res = await fetch(RUNTIME);
+  if (!res.ok) throw new Error(`Download failed (HTTP ${res.status})`);
+  await cache.put(RUNTIME, res);
+}
+
+let attempt = 0;
 async function load() {
   if (session) return;
   loading ||= (async () => {
     const cache = await caches.open(MODEL_CACHE);
     const [modelRes, cfgRes] = await Promise.all([cache.match(MODEL), cache.match(CONFIG)]);
     if (!modelRes || !cfgRes) throw new Error('The German voice is not downloaded yet.');
-    ort = await import(ORT);
-    ort.env.wasm.wasmPaths = ORT_WASM;
+    // Voices downloaded before the runtime was stored with them fetch it once now.
+    if (!(await cache.match(RUNTIME))) await saveRuntime(cache);
+    const runtime = URL.createObjectURL(await (await cache.match(RUNTIME)).blob());
+    // A failed start-up is remembered by the library for good, so a retry loads a fresh copy of it.
+    ort = await import(attempt ? `${ORT}?retry=${attempt}` : ORT);
+    ort.env.wasm.wasmPaths = { 'ort-wasm-simd.wasm': runtime, 'ort-wasm.wasm': `${ORT_WASM}ort-wasm.wasm` };
+    ort.env.wasm.numThreads = 1;
     // Run the model in a worker so the page stays responsive while it loads and speaks.
     ort.env.wasm.proxy = true;
     config = await cfgRes.json();
@@ -89,6 +104,13 @@ async function load() {
   })();
   try {
     await loading;
+  } catch (err) {
+    attempt++;
+    session = null;
+    console.warn('German voice failed to start:', err);
+    throw new Error(navigator.onLine
+      ? 'The German voice could not start. Please try again.'
+      : 'The German voice needs internet once more to finish setting up. Please try again online.');
   } finally {
     loading = null;
   }
