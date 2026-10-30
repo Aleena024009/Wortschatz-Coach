@@ -74,6 +74,11 @@ export async function saveCategories(uid, categories, updatedAt) {
   await api.fs.setDoc(metaDoc(uid), { categories, categoriesUpdatedAt: updatedAt }, { merge: true });
 }
 
+// Replaces the whole set of notes (mergeFields, so a removed note is removed in the cloud too).
+export async function saveNotes(uid, notes, updatedAt) {
+  await api.fs.setDoc(metaDoc(uid), { notes, notesUpdatedAt: updatedAt }, { mergeFields: ['notes', 'notesUpdatedAt'] });
+}
+
 // Live updates. With `since` = 0 the first snapshot is the whole list; otherwise only the words
 // stamped after `since` are read (each word read counts against the free daily reads). A snapshot
 // holds every write up to its newest stamp, so nothing stamped earlier can still be missing.

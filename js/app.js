@@ -36,6 +36,7 @@ const ICONS = {
   folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   next: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
   out: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+  book: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21a2 2 0 0 1 2-2h13M8 7h7M8 11h5"/></svg>',
   practice: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v10"/></svg>',
 };
 // A small inline icon next to text.
@@ -70,6 +71,8 @@ const state = {
   recent: [],
   tombstones: [], // removed words, kept so the removal syncs to your other devices
   catsUpdatedAt: 0,
+  notes: {}, // rules and tips per topic or sub-topic (see noteKey)
+  notesUpdatedAt: 0,
   user: null,
   unsubscribe: null,
   syncStatus: '',
@@ -103,6 +106,13 @@ function saveCategories() {
   persist(db.setMeta('categories', state.categories));
   persist(db.setMeta('categoriesUpdatedAt', state.catsUpdatedAt));
   if (state.user) cloudSave(cloud.saveCategories(state.user.uid, state.categories, state.catsUpdatedAt));
+}
+
+function saveNotes() {
+  state.notesUpdatedAt = Date.now();
+  persist(db.setMeta('notes', state.notes));
+  persist(db.setMeta('notesUpdatedAt', state.notesUpdatedAt));
+  if (state.user) cloudSave(cloud.saveNotes(state.user.uid, state.notes, state.notesUpdatedAt));
 }
 
 // Saves changed words on this device and, when signed in, to your account.
@@ -400,7 +410,8 @@ function inCategory(list) {
 function searched(list) {
   const q = state.search.trim().toLowerCase();
   if (!q) return list;
-  return list.filter((w) => fullGerman(w).toLowerCase().includes(q) || w.english.toLowerCase().includes(q) || (w.topic || '').toLowerCase().includes(q));
+  return list.filter((w) => fullGerman(w).toLowerCase().includes(q) || w.english.toLowerCase().includes(q) || (w.topic || '').toLowerCase().includes(q)
+    || (hasForms(w) && w.forms.some((f) => f.toLowerCase().includes(q))));
 }
 
 // Topics in list order (a pasted list keeps its heading order); words without one come last.
@@ -705,6 +716,7 @@ function editWord(w) {
   const german = h('input', { value: fullGerman(w), lang: 'de', required: true, autocapitalize: 'off', spellcheck: 'false' });
   const english = h('input', { value: w.english, required: true });
   const example = h('input', { value: w.example || '', lang: 'de', placeholder: 'Der Hund bellt.' });
+  const forms = h('input', { value: hasForms(w) ? w.forms.join(', ') : '', lang: 'de', placeholder: 'lerne, lernst, lernt, lernen, lernt, lernen' });
   const names = categoryNames();
   const level = h('select', {},
     ...[...names, ...(w.level && !names.includes(w.level) ? [w.level] : [])].map((n) => h('option', { value: n, selected: n === w.level }, n)),
@@ -755,6 +767,9 @@ function editWord(w) {
       }
       w.english = en;
       w.example = example.value.trim();
+      const formList = forms.value.split(',').map((f) => f.trim()).filter(Boolean);
+      if (formList.length === 6) w.forms = formList;
+      else if (!formList.length) delete w.forms;
       w.level = level.value;
       w.topic = topic.value === NEW_TOPIC ? w.topic || '' : topic.value;
       w.subtopic = w.topic && section.value !== NEW_TOPIC ? section.value : '';
@@ -773,12 +788,29 @@ function editWord(w) {
     onclick: () => { [german.value, english.value] = [english.value, german.value]; },
   }, icon('swap'), 'Swap German and English'),
   field('Example sentence (optional)', example),
+  w.pos === 'verb' || hasForms(w) ? field('Present tense: ich, du, er/sie/es, wir, ihr, sie/Sie (6 forms, with commas)', forms) : null,
   h('div', { class: 'edit-grid' }, field('Category', level), field('Topic', topic), sectionField),
   h('div', { class: 'row' },
     h('button', { class: 'btn primary', type: 'submit' }, 'Save'),
     h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'),
   )));
   german.focus();
+}
+
+// Present-tense forms of a verb are stored as `forms`, in this order.
+const PRONOUNS = ['ich', 'du', 'er/sie/es', 'wir', 'ihr', 'sie/Sie'];
+const SPOKEN_PRONOUNS = ['ich', 'du', 'er', 'wir', 'ihr', 'sie'];
+const hasForms = (w) => Array.isArray(w.forms) && w.forms.length === 6 && w.forms.every(Boolean);
+
+// "ich lerne / du lernst / …", each line with its own play button.
+function conjugationTable(w) {
+  return h('table', { class: 'conj' }, h('tbody', {}, ...w.forms.map((form, i) => {
+    const spoken = `${SPOKEN_PRONOUNS[i]} ${form}`;
+    return h('tr', {},
+      h('th', { scope: 'row' }, PRONOUNS[i]),
+      h('td', { lang: 'de' }, form),
+      h('td', {}, h('button', { class: 'icon-btn small conj-play', icon: 'play', 'aria-label': `Say ${spoken}`, onclick: () => say(spoken) })));
+  })));
 }
 
 // A card shows only what you need to learn the word: the German, its English meaning
@@ -807,6 +839,9 @@ function wordCard(w) {
   );
   const sentence = exampleRow(w, null);
   if (sentence) card.append(sentence);
+  if (hasForms(w)) {
+    card.append(h('details', { class: 'conj-box' }, h('summary', {}, 'ich / du / er … ', h('span', { class: 'hint' }, 'present tense')), conjugationTable(w)));
+  }
   return card;
 }
 
@@ -1014,6 +1049,16 @@ function onCloudMeta(meta) {
   } else if (state.catsUpdatedAt > remoteAt) {
     cloudSave(cloud.saveCategories(state.user.uid, state.categories, state.catsUpdatedAt));
   }
+  const notesAt = meta.notesUpdatedAt || 0;
+  if (meta.notes && notesAt > state.notesUpdatedAt) {
+    state.notes = meta.notes;
+    state.notesUpdatedAt = notesAt;
+    persist(db.setMeta('notes', state.notes));
+    persist(db.setMeta('notesUpdatedAt', notesAt));
+    refresh();
+  } else if (state.notesUpdatedAt > notesAt) {
+    cloudSave(cloud.saveNotes(state.user.uid, state.notes, state.notesUpdatedAt));
+  }
 }
 
 async function onUserChanged(user) {
@@ -1213,8 +1258,90 @@ function menuSelect(label, choices, onpick) {
       ...choices.map(([value, text]) => h('option', { value }, text))));
 }
 
+// Rules and tips belong to a topic, or to one sub-topic of it.
+const noteKey = (topic, section) => (section ? `${topic} › ${section}` : topic);
+
+// **bold**, so a note can highlight an ending or a rule.
+const inline = (text) => text.split(/\*\*(.+?)\*\*/).map((part, i) => (i % 2 ? h('strong', {}, part) : part));
+
+// Turns the plain text of a note into headings, lists and little tables:
+// "Ich → -e" lines in a row become a two-column table, "- " lines a list, "Something:" a heading.
+function formatNotes(text) {
+  const out = [];
+  let rows = null;
+  let items = null;
+  const flush = () => {
+    if (rows) out.push(h('table', { class: 'note-table' }, h('tbody', {}, ...rows)));
+    if (items) out.push(h('ul', {}, ...items));
+    rows = null;
+    items = null;
+  };
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    const heading = line.endsWith(':') && line.length < 70 && !line.startsWith('- ');
+    const pair = !heading && line.match(/^(.+?)\s+→\s+(.+)$/);
+    if (pair && !line.startsWith('- ')) {
+      if (items) flush();
+      (rows ||= []).push(h('tr', {}, h('th', { lang: 'de' }, ...inline(pair[1])), h('td', { lang: 'de' }, ...inline(pair[2]))));
+    } else if (line.startsWith('- ')) {
+      if (rows) flush();
+      (items ||= []).push(h('li', {}, ...inline(line.slice(2))));
+    } else {
+      flush();
+      if (!line) continue;
+      out.push(heading ? h('h4', {}, ...inline(line.slice(0, -1))) : h('p', {}, ...inline(line)));
+    }
+  }
+  flush();
+  return out;
+}
+
+function renderNotes(key) {
+  const box = $('topic-notes');
+  const text = state.notes[key];
+  box.hidden = !text;
+  if (!text) return;
+  // Remembers, per topic, whether you folded the rules away.
+  let folded = [];
+  try { folded = JSON.parse(localStorage.getItem('wc.foldedNotes') || '[]'); } catch { /* storage blocked */ }
+  const details = h('details', { open: !folded.includes(key) },
+    h('summary', {}, icon('book'), 'Rules and tips'),
+    h('div', { class: 'notes-body' }, ...formatNotes(text)),
+    h('button', { class: 'link-btn notes-edit', onclick: () => editNotes(key) }, icon('edit'), 'Edit'));
+  details.addEventListener('toggle', () => {
+    const rest = folded.filter((k) => k !== key);
+    folded = details.open ? rest : [...rest, key];
+    try { localStorage.setItem('wc.foldedNotes', JSON.stringify(folded)); } catch { /* storage blocked */ }
+  });
+  box.replaceChildren(details);
+}
+
+function editNotes(key) {
+  const text = h('textarea', { rows: 12, lang: 'de', spellcheck: 'false' });
+  text.value = state.notes[key] || '';
+  openModal((close) => h('form', {
+    onsubmit: (e) => {
+      e.preventDefault();
+      const value = text.value.trim();
+      if (value) state.notes[key] = value;
+      else delete state.notes[key];
+      saveNotes();
+      close();
+      renderWords();
+    },
+  },
+  h('h2', {}, `Rules and tips: ${topicGerman(key.split(' › ').pop()) || key.split(' › ').pop()}`),
+  h('p', { class: 'hint' }, 'Write a line like "Ich → -e" for a table row, "- " for a list item, a line ending in ":" for a heading, and **word** for bold.'),
+  text,
+  h('div', { class: 'row' },
+    h('button', { class: 'btn primary', type: 'submit' }, 'Save'),
+    h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'))));
+  text.focus();
+}
+
 // The bar at the top of an open topic or sub-topic: back, title, play, Practise and More.
-function renderFolderBar({ name, fallback, parent, count, back, practise, menu }) {
+function renderFolderBar({ name, fallback, parent, count, back, practise, menu, notes }) {
+  renderNotes(notes);
   const backBtn = $('words-back');
   backBtn.hidden = false;
   backBtn.onclick = back;
@@ -1231,7 +1358,9 @@ function renderFolderBar({ name, fallback, parent, count, back, practise, menu }
       practise ? h('button', { class: 'btn small primary', onclick: practise }, icon('practice'), 'Practise') : null,
       h('details', { class: 'more-menu' },
         h('summary', { class: 'icon-btn', icon: 'more', 'aria-label': 'More actions', title: 'More actions' }),
-        h('div', { class: 'menu' }, ...menu.filter(Boolean)))),
+        h('div', { class: 'menu' },
+          menuButton('book', state.notes[notes] ? 'Edit rules and tips' : 'Add rules and tips', () => editNotes(notes)),
+          ...menu.filter(Boolean)))),
   ].filter(Boolean));
 }
 
@@ -1250,6 +1379,7 @@ function renderTopicBar(topic, words) {
     count: `${subs ? `${plural(subs, 'sub-topic')} · ` : ''}${plural(words.length, 'word')}`,
     back: () => openTopic(null),
     practise: words.length ? () => practiseIn(topic) : null,
+    notes: noteKey(topic),
     menu: [
       topic ? menuButton('edit', 'Rename topic', () => renameTopic(topic)) : null,
       menuButton('swap', 'Swap German and English', () => swapLanguages(words, topic || 'Other words')),
@@ -1272,6 +1402,7 @@ function renderSectionBar(topic, section, words) {
     count: plural(words.length, 'word'),
     back: () => openTopic(topic),
     practise: words.length ? () => practiseIn(topic + SEP + section) : null,
+    notes: noteKey(topic, section),
     menu: [
       menuButton('edit', 'Rename sub-topic', () => renameSection(topic, section)),
       menuButton('swap', 'Swap German and English', () => swapLanguages(words, section)),
@@ -1317,6 +1448,7 @@ function renderWords() {
   renderCatTabs($('cat-tabs'));
   $('examples-note').hidden = state.words.length > 0;
   $('topic-bar').hidden = true;
+  $('topic-notes').hidden = true;
   $('words-back').hidden = true;
   const list = $('word-list');
   const base = inCategory(visibleSource());
@@ -1647,7 +1779,7 @@ function renderPractice() {
     playButton(w, source),
     source,
     revealed
-      ? h('div', { class: 'answer' }, soundRow(w), h('div', { class: 'english' }, w.english), exampleRow(w, source))
+      ? h('div', { class: 'answer' }, soundRow(w), h('div', { class: 'english' }, w.english), exampleRow(w, source), hasForms(w) ? conjugationTable(w) : null)
       : h('button', { class: 'btn', onclick: reveal }, 'Show answer'),
   );
 }
@@ -1992,6 +2124,8 @@ async function init() {
     state.tombstones = all.filter((w) => w.deleted);
     state.categories = await db.getMeta('categories', null);
     state.catsUpdatedAt = await db.getMeta('categoriesUpdatedAt', 0);
+    state.notes = await db.getMeta('notes', {});
+    state.notesUpdatedAt = await db.getMeta('notesUpdatedAt', 0);
     $('draft').value = await db.getMeta('draft', '');
   } catch {
     toast('Could not open the local database.');
