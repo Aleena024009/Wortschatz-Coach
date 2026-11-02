@@ -201,6 +201,20 @@
         <label class="sr-only" for="sub-filter-practice">Sub-topic</label>
         <select id="sub-filter-practice" class="topic-select sub-select" hidden></select>
       </div>
+      <div class="segmented practice-mode" role="radiogroup" aria-label="Practice mode" id="practice-mode">
+        <button role="radio" data-mode="cards">Flashcards</button>
+        <button role="radio" data-mode="quiz">Quiz</button>
+      </div>
+      <div id="quiz-area" hidden>
+        <div class="segmented quiz-kind" role="radiogroup" aria-label="Quiz type" id="quiz-kind">
+          <button role="radio" data-kind="de-en">German → English</button>
+          <button role="radio" data-kind="en-de">English → German</button>
+          <button role="radio" data-kind="listen">Listen</button>
+        </div>
+        <div class="flashcard quiz" id="quiz"></div>
+        <p class="hint center keys-hint">Keyboard: 1–4 = choose · Enter = next · L = listen again</p>
+      </div>
+      <div id="cards-area">
       <div class="flashcard" id="flashcard"></div>
       <div class="fc-controls">
         <button class="btn" id="fc-prev"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back</button>
@@ -212,6 +226,7 @@
         <label class="autoplay-toggle"><input type="checkbox" id="fc-autoplay" checked> Auto-play the word</label>
       </div>
       <p class="hint center keys-hint">Keyboard: Space = show / hide answers · ← → = back / next · L = listen</p>
+      </div>
     </section>
 
     <!-- SETTINGS -->

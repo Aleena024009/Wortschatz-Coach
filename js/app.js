@@ -54,7 +54,7 @@ function loadSettings() {
 }
 
 const settings = Object.assign(
-  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '', autoplay: true, shuffle: false, showAnswers: true, trDir: 'en-de' },
+  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '', autoplay: true, shuffle: false, showAnswers: true, trDir: 'en-de', practiceMode: 'cards', quizKind: 'de-en' },
   loadSettings(),
 );
 const state = {
@@ -79,6 +79,7 @@ const state = {
   hd: { ready: false, progress: null },
   sync: { since: 0, local: 0 }, // see syncKey()
   fc: { order: [], index: 0, revealed: false },
+  quiz: null, // the running quiz round, see startQuiz()
 };
 let dbOk = false;
 
@@ -1756,6 +1757,14 @@ function currentCard() {
 function renderPractice() {
   renderCatTabs($('cat-tabs-practice'));
   renderTopicSelect($('topic-filter-practice'), $('sub-filter-practice'));
+  const quizMode = settings.practiceMode === 'quiz';
+  document.querySelectorAll('#practice-mode button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === settings.practiceMode)));
+  $('quiz-area').hidden = !quizMode;
+  $('cards-area').hidden = quizMode;
+  if (quizMode) {
+    renderQuiz();
+    return;
+  }
   const el = $('flashcard');
   const { order, index } = state.fc;
   // "Show answers" on: every card shows its meaning; off: press Show answer per card.
@@ -1786,7 +1795,141 @@ function renderPractice() {
 
 // Says the word on the card as soon as it appears (Practice → Auto-play).
 function autoPlay() {
-  if (settings.autoplay && state.view === 'practice') $('flashcard').querySelector('.icon-btn.play')?.click();
+  if (settings.autoplay && state.view === 'practice' && settings.practiceMode !== 'quiz') $('flashcard').querySelector('.icon-btn.play')?.click();
+}
+
+// ---------- quiz ----------
+// Four answers per question, from the words of the chosen category, topic and sub-topic.
+// Kinds: see the German and pick the English, the other way round, or hear it and pick the German.
+
+const quizWords = () => inTopic(inCategory(visibleSource()));
+const quizDeckKey = () => `${settings.filter}|${settings.topic}|${settings.quizKind}|${quizWords().length}`;
+const promptText = (w) => (settings.quizKind === 'en-de' ? w.english : fullGerman(w));
+const answerText = (w) => (settings.quizKind === 'de-en' ? w.english : fullGerman(w));
+
+function startQuiz(ids) {
+  const pool = quizWords();
+  state.quiz = {
+    key: quizDeckKey(),
+    queue: shuffled(ids || pool.map((w) => w.id)),
+    index: 0,
+    score: 0,
+    wrong: [],
+    picked: null,
+    options: null,
+  };
+}
+
+// Three wrong answers, preferably from the same sub-topic (harder, and teaches the differences).
+function quizOptions(w) {
+  const label = answerText(w).toLowerCase();
+  const seen = new Set([label]);
+  const near = shuffled(quizWords().filter((x) => x.topic === w.topic && (x.subtopic || '') === (w.subtopic || '')));
+  const rest = shuffled(quizWords());
+  const all = shuffled(visibleSource());
+  const wrong = [];
+  for (const x of [...near, ...rest, ...all]) {
+    const t = answerText(x).toLowerCase();
+    if (wrong.length === 3) break;
+    if (seen.has(t)) continue;
+    seen.add(t);
+    wrong.push(x);
+  }
+  return shuffled([w, ...wrong]);
+}
+
+function quizWord() {
+  const q = state.quiz;
+  return q && visibleSource().find((x) => x.id === q.queue[q.index]);
+}
+
+function renderQuiz() {
+  document.querySelectorAll('#quiz-kind button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.kind === settings.quizKind)));
+  const el = $('quiz');
+  if (quizWords().length < 2) {
+    el.replaceChildren(h('p', { class: 'empty' }, 'A quiz needs at least 2 words here. Choose a bigger topic or category.'));
+    return;
+  }
+  if (!state.quiz || state.quiz.key !== quizDeckKey()) startQuiz();
+  const q = state.quiz;
+  if (q.index >= q.queue.length) return renderQuizEnd();
+  const w = quizWord();
+  if (!w) {
+    q.index++;
+    return renderQuiz();
+  }
+  q.options ||= quizOptions(w);
+  const listen = settings.quizKind === 'listen';
+  const play = playButton(w, null);
+  const ask = listen ? 'Which word do you hear?'
+    : settings.quizKind === 'en-de' ? 'What is this in German?' : 'What does this mean?';
+  el.className = `flashcard quiz ${colorClass(w.level)}`;
+  el.replaceChildren(
+    h('div', { class: 'quiz-top' },
+      h('span', { class: 'progress' }, `${q.index + 1} / ${q.queue.length}`),
+      h('span', { class: 'quiz-score' }, icon('check'), String(q.score))),
+    h('div', { class: 'quiz-bar' }, h('span', { style: `width:${(q.index / q.queue.length) * 100}%` })),
+    h('div', { class: 'fc-topic' }, ask),
+    listen ? null : h('div', { class: 'word', lang: settings.quizKind === 'en-de' ? 'en' : 'de' }, promptText(w)),
+    listen || q.picked ? play : null,
+    h('div', { class: 'quiz-options' }, ...q.options.map((o, i) => {
+      const right = o.id === w.id;
+      const cls = !q.picked ? '' : right ? ' right' : o.id === q.picked ? ' wrong' : ' dim';
+      return h('button', {
+        class: `quiz-option${cls}`,
+        disabled: !!q.picked,
+        lang: settings.quizKind === 'de-en' ? 'en' : 'de',
+        onclick: () => answerQuiz(o),
+      }, h('span', { class: 'key' }, String(i + 1)), answerText(o));
+    })),
+    q.picked ? h('div', { class: `quiz-feedback ${q.picked === w.id ? 'good' : 'bad'}` },
+      h('strong', {}, q.picked === w.id ? 'Richtig! ' : 'Not quite. '),
+      h('span', { lang: 'de' }, fullGerman(w)), ` = ${w.english}`,
+      w.example ? h('div', { class: 'quiz-example', lang: 'de' }, w.example) : null) : null,
+    q.picked ? h('button', { class: 'btn primary wide', id: 'quiz-next', onclick: nextQuiz }, q.index + 1 < q.queue.length ? 'Next question' : 'See my score') : null,
+  );
+  if (listen && !q.picked && !q.played) {
+    q.played = true;
+    play.click();
+  }
+}
+
+function answerQuiz(option) {
+  const q = state.quiz;
+  const w = quizWord();
+  if (!q || q.picked || !w) return;
+  q.picked = option.id;
+  if (option.id === w.id) q.score++;
+  else q.wrong.push(w.id);
+  renderQuiz();
+  // Hear the right word after every answer, so sound and meaning stick together.
+  if (settings.quizKind !== 'listen') $('quiz').querySelector('.icon-btn.play')?.click();
+  $('quiz-next')?.focus({ preventScroll: true });
+}
+
+function nextQuiz() {
+  const q = state.quiz;
+  Object.assign(q, { index: q.index + 1, picked: null, options: null, played: false });
+  renderQuiz();
+}
+
+function renderQuizEnd() {
+  const q = state.quiz;
+  const total = q.queue.length;
+  const pct = Math.round((q.score / total) * 100);
+  const praise = pct === 100 ? 'Perfekt!' : pct >= 80 ? 'Sehr gut!' : pct >= 50 ? 'Gut gemacht!' : 'Weiter üben!';
+  const missed = [...new Set(q.wrong)].map((id) => visibleSource().find((x) => x.id === id)).filter(Boolean);
+  $('quiz').className = 'flashcard quiz';
+  $('quiz').replaceChildren(
+    h('div', { class: 'quiz-result' }, `${q.score} / ${total}`),
+    h('div', { class: 'english' }, `${praise} (${pct}%)`),
+    missed.length ? h('div', { class: 'quiz-missed' },
+      h('h4', {}, 'Words to practise:'),
+      h('ul', {}, ...missed.map((w) => h('li', {}, h('strong', { lang: 'de' }, fullGerman(w)), ` = ${w.english}`)))) : null,
+    h('div', { class: 'row center' },
+      missed.length ? h('button', { class: 'btn primary', onclick: () => { startQuiz(missed.map((w) => w.id)); renderQuiz(); } }, `Practise the ${plural(missed.length, 'mistake')} again`) : null,
+      h('button', { class: `btn${missed.length ? '' : ' primary'}`, onclick: () => { startQuiz(); renderQuiz(); } }, 'New round')),
+  );
 }
 
 function reveal() {
@@ -2104,6 +2247,13 @@ function repairNumberedWords() {
 
 function onKey(e) {
   if (state.view !== 'practice' || e.target.closest('input, textarea, select')) return;
+  if (settings.practiceMode === 'quiz') {
+    const q = state.quiz;
+    if (/^[1-4]$/.test(e.key) && q && !q.picked) $('quiz').querySelectorAll('.quiz-option')[Number(e.key) - 1]?.click();
+    else if (e.key === 'Enter' && q?.picked && !e.target.closest('button')) nextQuiz();
+    else if (e.key.toLowerCase() === 'l') $('quiz').querySelector('.icon-btn.play')?.click();
+    return;
+  }
   if (e.key === 'ArrowRight') stepCard(1);
   else if (e.key === 'ArrowLeft') stepCard(-1);
   else if (e.key === ' ') {
@@ -2153,6 +2303,18 @@ async function init() {
     saveSettings();
     renderPractice();
   });
+  document.querySelectorAll('#practice-mode button').forEach((b) => b.addEventListener('click', () => {
+    settings.practiceMode = b.dataset.mode;
+    saveSettings();
+    renderPractice();
+    autoPlay();
+  }));
+  document.querySelectorAll('#quiz-kind button').forEach((b) => b.addEventListener('click', () => {
+    settings.quizKind = b.dataset.kind;
+    saveSettings();
+    state.quiz = null;
+    renderQuiz();
+  }));
   $('fc-autoplay').addEventListener('change', (e) => {
     settings.autoplay = e.target.checked;
     saveSettings();
