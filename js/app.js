@@ -1262,8 +1262,12 @@ function menuSelect(label, choices, onpick) {
 // Rules and tips belong to a topic, or to one sub-topic of it.
 const noteKey = (topic, section) => (section ? `${topic} › ${section}` : topic);
 
-// **bold**, so a note can highlight an ending or a rule.
-const inline = (text) => text.split(/\*\*(.+?)\*\*/).map((part, i) => (i % 2 ? h('strong', {}, part) : part));
+// **bold**, so a note can highlight an ending or a rule, and [text](https://…) for a link.
+const inline = (text) => text.split(/(\*\*.+?\*\*|\[[^\]]+\]\(https:\/\/[^)\s]+\))/).map((part) => {
+  const link = part.match(/^\[([^\]]+)\]\((https:\/\/[^)\s]+)\)$/);
+  if (link) return h('a', { href: link[2], target: '_blank', rel: 'noopener', class: 'note-link' }, icon('out'), link[1]);
+  return /^\*\*.+\*\*$/.test(part) ? h('strong', {}, part.slice(2, -2)) : part;
+});
 
 // Turns the plain text of a note into headings, lists and little tables:
 // "Ich → -e" lines in a row become a two-column table, "- " lines a list, "Something:" a heading.
@@ -1332,7 +1336,7 @@ function editNotes(key) {
     },
   },
   h('h2', {}, `Rules and tips: ${topicGerman(key.split(' › ').pop()) || key.split(' › ').pop()}`),
-  h('p', { class: 'hint' }, 'Write a line like "Ich → -e" for a table row, "- " for a list item, a line ending in ":" for a heading, and **word** for bold.'),
+  h('p', { class: 'hint' }, 'Write a line like "Ich → -e" for a table row, "- " for a list item, a line ending in ":" for a heading, **word** for bold and [name](https://…) for a link.'),
   text,
   h('div', { class: 'row' },
     h('button', { class: 'btn primary', type: 'submit' }, 'Save'),

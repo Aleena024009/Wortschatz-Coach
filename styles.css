@@ -718,3 +718,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .quiz-missed h4 { margin: 4px 0; }
 .quiz-missed ul { margin: 0; padding-left: 20px; line-height: 1.7; }
 .row.center { justify-content: center; flex-wrap: wrap; }
+.note-link { color: var(--accent); font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; }
+.note-link:hover { text-decoration: underline; }
+.note-link .i { margin-right: 4px; }
+.notes-body li:has(.note-link) { list-style: none; margin-left: -18px; padding: 2px 0; }
