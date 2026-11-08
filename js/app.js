@@ -1169,7 +1169,7 @@ function groupedCards(list, withHeads) {
 }
 
 // One folder tile: a topic on the overview, or a sub-topic inside a topic.
-function folderTile(name, detail, open, picking) {
+function folderTile(name, detail, open, picking, parent = null) {
   const picked = picking?.has(name);
   const choose = () => {
     if (!picking) return open();
@@ -1187,7 +1187,7 @@ function folderTile(name, detail, open, picking) {
   h('div', { class: 'tile-main' }, titlePair(name, 'h3', 'Other words')),
   h('div', { class: 'tile-foot' },
     h('span', { class: 'count' }, icon('folder'), detail),
-    picking ? null : h('span', { class: 'tile-actions' }, youTubeButton(name), topicPlayButton(name, true))));
+    picking ? null : h('span', { class: 'tile-actions' }, parent ? youTubeButton(parent, name) : youTubeButton(name), topicPlayButton(name, true))));
 }
 
 function topicTile(topic, count) {
@@ -1265,12 +1265,43 @@ const noteKey = (topic, section) => (section ? `${topic} › ${section}` : topic
 
 const isYouTube = (url) => /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.test(url);
 
-// A YouTube search for a topic, so every topic and sub-topic card has videos one tap away.
-function youTubeButton(name) {
-  const query = `${topicGerman(name) || name} Deutsch lernen`;
+// One video per topic. A YouTube link in the topic's own rules and tips wins, so you can
+// pick any video yourself; otherwise a checked video for common grammar topics is used.
+const TOPIC_VIDEOS = [
+  [/akkusativ\s*präp|präpositionen mit akkusativ|accusative prep/i, 'nZduxD7nEU8'], // YourGermanTeacher
+  [/dativ\s*präp|präpositionen mit dativ|dative prep/i, 'CDgG2K7Kbbs'], // Easy German
+  [/wechselpräp|two-way prep/i, 'auWRmuw_AcY'], // YourGermanTeacher
+  [/präposition|preposition/i, 'OlRQT4V72LM'], // YourGermanTeacher
+  [/dativ|dative/i, 'G-dgLzu18EU'], // YourGermanTeacher
+  [/akkusativ|accusative/i, 'fPKH95g_9cs'], // YourGermanTeacher
+  [/fälle|\bcases\b/i, '0Fwr5gyNNDM'], // Dein Sprachcoach
+  [/adosu|konjunktion|conjunction/i, 'DWkaLIghET8'], // Learn German
+  [/zeitadverb|time adverb/i, 'nFBOwzDCzrg'], // Learn German
+  [/imperativ/i, 'Mty5HjzgNOc'], // YourGermanTeacher
+  [/\bkein\b|negation/i, 'NcswV-xuyMc'], // YourGermanTeacher
+  [/adjektiv|adjective|gegenteil|opposite/i, 'Iok1CECJZfg'], // Deutsch1
+  [/\bverben\b|\bverbs?\b/i, 'CyME2ZobD60'], // Hallo Deutschschule
+];
+const YT_LINK = /\[[^\]]+\]\((https:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[^)\s]+)\)|(https:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)\S+)/;
+
+function topicVideo(topic, section) {
+  for (const key of [section && noteKey(topic, section), topic].filter(Boolean)) {
+    const link = (state.notes[key] || '').match(YT_LINK);
+    if (link) return link[1] || link[2];
+  }
+  for (const name of [section, topic].filter(Boolean)) {
+    const hit = TOPIC_VIDEOS.find(([re]) => re.test(name));
+    if (hit) return `https://www.youtube.com/watch?v=${hit[1]}`;
+  }
+  return '';
+}
+
+function youTubeButton(topic, section = null) {
+  const url = topicVideo(topic, section);
+  if (!url) return null;
   return h('a', {
-    class: 'icon-btn small yt-btn', href: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
-    target: '_blank', rel: 'noopener', title: 'Videos on YouTube', 'aria-label': `YouTube videos about ${name}`,
+    class: 'icon-btn small yt-btn', href: url, target: '_blank', rel: 'noopener',
+    title: 'Watch the video on YouTube', 'aria-label': `YouTube video about ${section || topic}`,
     onclick: (e) => e.stopPropagation(), onkeydown: (e) => e.stopPropagation(),
   }, icon('youtube'));
 }
@@ -1376,7 +1407,7 @@ function renderFolderBar({ name, fallback, parent, count, back, practise, menu, 
       h('span', { class: 'count' }, count)),
     topicPlayButton(name),
     h('div', { class: 'topic-actions' },
-      name ? youTubeButton(name) : null,
+      name ? (parent ? youTubeButton(parent, name) : youTubeButton(name)) : null,
       practise ? h('button', { class: 'btn small primary', onclick: practise }, icon('practice'), 'Practise') : null,
       h('details', { class: 'more-menu' },
         h('summary', { class: 'icon-btn', icon: 'more', 'aria-label': 'More actions', title: 'More actions' }),
@@ -1520,7 +1551,7 @@ function renderWords() {
     list.className = subs.length ? 'cards topics' : 'cards';
     list.replaceChildren(...(inside.length
       ? [
-        ...subs.map(([sec, n]) => folderTile(sec, plural(n, 'word'), () => openTopic(topic, sec))),
+        ...subs.map(([sec, n]) => folderTile(sec, plural(n, 'word'), () => openTopic(topic, sec), null, topic)),
         subs.length && loose.length ? h('li', { class: 'topic-head' }, h('h3', {}, 'Other words in this topic'), h('span', { class: 'count' }, plural(loose.length, 'word'))) : null,
         ...loose.map(wordCard),
       ].filter(Boolean)
