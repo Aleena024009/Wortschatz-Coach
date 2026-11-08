@@ -20,6 +20,7 @@ const AUDIO_LOOKUP_VERSION = 2;
 const RECORDING_RATE = { 0.6: 0.75, 0.85: 1, 1: 1.15 };
 
 const ICONS = {
+  youtube: '<svg class="yt" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="5" width="21" height="14" rx="4.5" fill="#ff0033" stroke="none"/><path d="M10 9v6l5.2-3z" fill="#fff" stroke="none"/></svg>',
   speaker: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/></svg>',
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
@@ -1186,7 +1187,7 @@ function folderTile(name, detail, open, picking) {
   h('div', { class: 'tile-main' }, titlePair(name, 'h3', 'Other words')),
   h('div', { class: 'tile-foot' },
     h('span', { class: 'count' }, icon('folder'), detail),
-    picking ? null : topicPlayButton(name, true)));
+    picking ? null : h('span', { class: 'tile-actions' }, youTubeButton(name), topicPlayButton(name, true))));
 }
 
 function topicTile(topic, count) {
@@ -1262,10 +1263,25 @@ function menuSelect(label, choices, onpick) {
 // Rules and tips belong to a topic, or to one sub-topic of it.
 const noteKey = (topic, section) => (section ? `${topic} › ${section}` : topic);
 
+const isYouTube = (url) => /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.test(url);
+
+// A YouTube search for a topic, so every topic and sub-topic card has videos one tap away.
+function youTubeButton(name) {
+  const query = `${topicGerman(name) || name} Deutsch lernen`;
+  return h('a', {
+    class: 'icon-btn small yt-btn', href: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+    target: '_blank', rel: 'noopener', title: 'Videos on YouTube', 'aria-label': `YouTube videos about ${name}`,
+    onclick: (e) => e.stopPropagation(), onkeydown: (e) => e.stopPropagation(),
+  }, icon('youtube'));
+}
+
 // **bold**, so a note can highlight an ending or a rule, and [text](https://…) for a link.
 const inline = (text) => text.split(/(\*\*.+?\*\*|\[[^\]]+\]\(https:\/\/[^)\s]+\))/).map((part) => {
   const link = part.match(/^\[([^\]]+)\]\((https:\/\/[^)\s]+)\)$/);
-  if (link) return h('a', { href: link[2], target: '_blank', rel: 'noopener', class: 'note-link' }, icon('out'), link[1]);
+  if (link) {
+    const yt = isYouTube(link[2]);
+    return h('a', { href: link[2], target: '_blank', rel: 'noopener', class: `note-link${yt ? ' yt-chip' : ''}` }, icon(yt ? 'youtube' : 'out'), link[1]);
+  }
   return /^\*\*.+\*\*$/.test(part) ? h('strong', {}, part.slice(2, -2)) : part;
 });
 
@@ -1360,6 +1376,7 @@ function renderFolderBar({ name, fallback, parent, count, back, practise, menu, 
       h('span', { class: 'count' }, count)),
     topicPlayButton(name),
     h('div', { class: 'topic-actions' },
+      name ? youTubeButton(name) : null,
       practise ? h('button', { class: 'btn small primary', onclick: practise }, icon('practice'), 'Practise') : null,
       h('details', { class: 'more-menu' },
         h('summary', { class: 'icon-btn', icon: 'more', 'aria-label': 'More actions', title: 'More actions' }),
