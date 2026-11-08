@@ -2069,7 +2069,7 @@ function setView(view) {
 
 function exportBackup() {
   const words = state.words.map(({ audio: _audio, ...w }) => w);
-  const data = { app: 'wortschatz-coach', version: 1, exported: new Date().toISOString(), categories: state.categories, words };
+  const data = { app: 'wortschatz-coach', version: 1, exported: new Date().toISOString(), categories: state.categories, words, notes: state.notes };
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
   const a = h('a', { href: url, download: `wortschatz-backup-${new Date().toISOString().slice(0, 10)}.json` });
   document.body.append(a);
@@ -2087,7 +2087,18 @@ async function importBackup(file) {
       .filter((w) => w && typeof w.german === 'string' && typeof w.english === 'string')
       .map(({ id, added, audio: _audio, ...w }) => w);
     const { added, duplicates } = addWords(items);
-    toast(`Imported ${plural(added, 'word')}${duplicates ? `, skipped ${duplicates} duplicates` : ''}.`);
+    // Rules and tips from the file fill only topics that have none, so your own notes stay as they are.
+    let notesAdded = 0;
+    for (const [key, text] of Object.entries(data.notes && typeof data.notes === 'object' ? data.notes : {})) {
+      if (typeof text !== 'string' || !text.trim() || state.notes[key]) continue;
+      state.notes[key] = text.trim();
+      notesAdded++;
+    }
+    if (notesAdded) {
+      saveNotes();
+      renderWords();
+    }
+    toast(`Imported ${plural(added, 'word')}${notesAdded ? ` and ${plural(notesAdded, 'set')} of rules and tips` : ''}${duplicates ? `, skipped ${duplicates} duplicates` : ''}.`);
   } catch {
     toast('That file is not a Wortschatz Coach backup.');
   }
