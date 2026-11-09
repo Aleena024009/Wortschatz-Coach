@@ -1367,35 +1367,82 @@ const noteKey = (topic, section) => (section ? `${topic} › ${section}` : topic
 
 const isYouTube = (url) => /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.test(url);
 
-// One video per topic. A YouTube link in the topic's own rules and tips wins, so you can
-// pick any video yourself; otherwise a checked video for common grammar topics is used.
+// Videos for each topic, only from two channels: Learn German with Anja and YourGermanTeacher.
+// [rule matched against the topic / sub-topic name, Anja video, YourGermanTeacher video]; each
+// video is [id, title] or null. The first rule that matches wins, so specific ones come first.
+// A YouTube link in the topic's own rules and tips still wins for the tile button.
+const ANJA = 'Learn German with Anja';
+const YGT = 'YourGermanTeacher';
 const TOPIC_VIDEOS = [
-  [/akkusativ\s*präp|präpositionen mit akkusativ|accusative prep/i, 'nZduxD7nEU8'], // YourGermanTeacher
-  [/dativ\s*präp|präpositionen mit dativ|dative prep/i, 'CDgG2K7Kbbs'], // Easy German
-  [/wechselpräp|two-way prep/i, 'auWRmuw_AcY'], // YourGermanTeacher
-  [/präposition|preposition/i, 'OlRQT4V72LM'], // YourGermanTeacher
-  [/dativ|dative/i, 'G-dgLzu18EU'], // YourGermanTeacher
-  [/akkusativ|accusative/i, 'fPKH95g_9cs'], // YourGermanTeacher
-  [/fälle|\bcases\b/i, '0Fwr5gyNNDM'], // Dein Sprachcoach
-  [/adosu|konjunktion|conjunction/i, 'DWkaLIghET8'], // Learn German
-  [/zeitadverb|time adverb/i, 'nFBOwzDCzrg'], // Learn German
-  [/imperativ/i, 'Mty5HjzgNOc'], // YourGermanTeacher
-  [/\bkein\b|negation/i, 'NcswV-xuyMc'], // YourGermanTeacher
-  [/adjektiv|adjective|gegenteil|opposite/i, 'Iok1CECJZfg'], // Deutsch1
-  [/\bverben\b|\bverbs?\b/i, 'CyME2ZobD60'], // Hallo Deutschschule
+  [/numbers 0–20/i, ['T09k-gSi76k', 'Numbers from 0 to 20'], ['Bje6l_koJig', 'German Numbers 1–20']],
+  [/numbers \d\d|additional numbers/i, ['o7f26S6Gmo4', 'Numbers from 20 to 100'], ['aqk2YZX8YVw', 'German Numbers 20–100']],
+  [/zahlen|numbers/i, ['T09k-gSi76k', 'Numbers from 0 to 20'], ['Bje6l_koJig', 'German Numbers 1–20']],
+  [/buchstaben|alphabet/i, ['s-e4cXgmEy4', 'The German Alphabet'], ['TytGj8xiPyY', 'Das Alphabet']],
+  [/begrüßung|greeting/i, ['iB_sassbnOw', 'German Greetings'], ['ISbFzliShSc', 'Your first German words']],
+  [/wochentag|days of the week/i, ['UG9DuRk-u8E', 'The days of the week'], ['BtDsNX2i_uU', 'Weekdays, daytime and months']],
+  [/monate|months/i, ['Vg7Df5o9JU0', 'The months'], ['BtDsNX2i_uU', 'Weekdays, daytime and months']],
+  [/jahreszeit|season/i, ['BwoKITTecio', 'The weather – Das Wetter'], ['Ox0t6uz-iiU', 'Das Wetter']],
+  [/tageszeit|parts of the day/i, ['44xYdQWki-M', 'Telling the time – Die Uhrzeit'], ['BtDsNX2i_uU', 'Weekdays, daytime and months']],
+  [/wochenende|weekend/i, ['UG9DuRk-u8E', 'The days of the week'], ['BtDsNX2i_uU', 'Weekdays, daytime and months']],
+  [/gegenwart/i, null, ['bgntEB5I5fI', 'nie, selten, manchmal, oft, immer']],
+  [/zeitadverb|time adverb|vergangenheit|zukunft|zeitangaben|time expressions/i, null, ['e341i0xDnBw', 'All German adverbs of time']],
+  [/familie|family/i, ['Kk8qA0e63UE', 'Talk about your family'], ['R1ZLm9E-9nw', 'Family members and relatives']],
+  [/farben|colou?rs/i, ['-LbNn7l9WoA', 'German colours'], ['mAG6zAuDzpM', 'All colours in German']],
+  [/berufe|profession/i, ['XTrsVMe6_mI', 'German professions – Berufe'], ['L6Up_-0bfq8', 'Talking about your profession']],
+  [/ja-\/nein|yes\/no/i, ['a0E2SkAAX6o', 'Asking questions in German'], ['PYTgxJvsXAk', 'How to ask the perfect question']],
+  [/w-fragen|question words|w-questions/i, ['cCEnhEDLmIk', 'The 6 most important question words'], ['7euPPqMFnqE', 'All A1 question words']],
+  [/unregelmäßig|irregular verbs/i, ['wKDc4a5uPTk', 'The verb "to be" in German'], ['5tWo1JIJcBc', 'All A1 irregular verbs']],
+  [/regelmäßig|regular verbs/i, ['qdTEFPqjfkY', 'Conjugating regular verbs'], ['0LRs_M_BtsI', 'Verb conjugation and pronouns']],
+  [/dativverben|dative verbs/i, ['2SJh9NzCN8o', 'The 10 most important dative verbs'], ['qW2-zdSlcxU', 'All 14 A1 dative verbs']],
+  [/dativpronomen|dative pronouns/i, ['uoEwlH9XgZ0', 'mir, dir, Ihnen – dative pronouns'], ['4F3oFBa3MuE', 'Personal pronouns in the dative']],
+  [/akkusativ-pronomen|accusative pronouns/i, ['vPl0M_31_aU', 'mich, dich, euch – accusative pronouns'], ['GHRHSR-5thc', 'Personal pronouns in the accusative']],
+  [/possessivpronomen im akkusativ|accusative possessives/i, ['CY4UhFttoog', 'Possessive pronouns: mein, dein, sein …'], ['pTX_044w2Ys', 'meinen, deinen, seinen']],
+  [/possessiv/i, ['CY4UhFttoog', 'Possessive pronouns: mein, dein, sein …'], ['xdVWELZqPT8', 'Mein, dein, sein – Possessivartikel']],
+  [/nominativ|nominative/i, ['Re-5t9qA-AU', 'The nominative: ein, eine, kein, keine'], ['I7vsv8DN9EE', 'What is Nominativ?']],
+  [/akkusativpräp|präpositionen mit akkusativ|accusative prep/i, ['OnNGCS5tVMw', 'Remember the accusative prepositions'], ['nZduxD7nEU8', 'All accusative prepositions']],
+  [/dativpräp|präpositionen mit dativ|dative prep/i, ['L_EWNRkvkZY', 'Remember the dative prepositions (+ song)'], ['ptfAc2uqxDY', 'Top 10 dative prepositions']],
+  [/präposition|preposition/i, ['OenY9WNgRYU', 'Overview of German prepositions'], ['OlRQT4V72LM', 'All A1 prepositions']],
+  [/dativ|dative/i, ['3unBmbBOqyA', 'The dative: dem Mann, der Frau'], ['G-dgLzu18EU', 'Was ist Dativ?']],
+  [/akkusativ|accusative/i, ['FuXxNSj_y5w', 'The accusative: einen und den'], ['fPKH95g_9cs', 'Was ist Akkusativ?']],
+  [/fälle|\bcases\b/i, ['8VowGvnRU_s', 'Understand the German cases'], ['C9BDO9GZFxg', 'The 4 German cases']],
+  [/häufige adjektive|common adjectives/i, ['t2jLvRrDThM', 'Adjectives in the nominative'], ['SXKD5bQl-zQ', 'Adjective endings: the complete system']],
+  [/adjektiv|adjective|gegenteil|opposite/i, ['hf3CGRBV15s', 'The top 10 German adjectives'], ['CYwCXrUkUmE', 'German adjectives']],
+  [/\bsätze\b|satzbau|sentence structure|^sentences/i, ['RI4lOt4riXs', 'German sentence structure'], ['O-_cxHx5FD4', 'Satzbau: the main clause']],
+  [/adosu|konjunktion|conjunction/i, null, ['ixvgSNalFBg', 'All A1 conjunctions']],
+  [/imperativ/i, ['_rIvRPaDH8o', 'The imperative (du)'], ['Mty5HjzgNOc', 'How to form the imperative']],
+  [/nicht und kein|negation/i, ['pJYb4L7S6vw', 'When to use kein and nicht'], ['NcswV-xuyMc', 'Kein vs nicht']],
+  [/plural/i, ['BgZ--QmPAIw', 'The 5 rules of the German plural'], ['3Aqc5WDKO9A', 'German plural rules']],
+  [/verben|\bverbs?\b/i, ['qdTEFPqjfkY', 'Conjugating regular verbs'], ['0LRs_M_BtsI', 'Verb conjugation and pronouns']],
 ];
+const ytUrl = (id) => `https://www.youtube.com/watch?v=${id}`;
 const YT_LINK = /\[[^\]]+\]\((https:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[^)\s]+)\)|(https:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)\S+)/;
+
+// The two videos for a topic or sub-topic: [{ channel, id, title }], Anja first.
+function topicVideos(topic, section) {
+  for (const name of [section, topic].filter(Boolean)) {
+    const hit = TOPIC_VIDEOS.find(([re]) => re.test(name));
+    if (hit) return [[ANJA, hit[1]], [YGT, hit[2]]].filter(([, v]) => v).map(([channel, [id, title]]) => ({ channel, id, title }));
+  }
+  return [];
+}
 
 function topicVideo(topic, section) {
   for (const key of [section && noteKey(topic, section), topic].filter(Boolean)) {
     const link = (state.notes[key] || '').match(YT_LINK);
     if (link) return link[1] || link[2];
   }
-  for (const name of [section, topic].filter(Boolean)) {
-    const hit = TOPIC_VIDEOS.find(([re]) => re.test(name));
-    if (hit) return `https://www.youtube.com/watch?v=${hit[1]}`;
-  }
-  return '';
+  const [first] = topicVideos(topic, section);
+  return first ? ytUrl(first.id) : '';
+}
+
+// "Videos" row inside an open topic: one button per channel.
+function videoRow(topic, section) {
+  const videos = topicVideos(topic, section);
+  if (!videos.length) return null;
+  return h('div', { class: 'topic-videos' },
+    h('span', { class: 'hint' }, 'Videos:'),
+    ...videos.map((v) => h('a', { class: 'yt-chip', href: ytUrl(v.id), target: '_blank', rel: 'noopener', title: `${v.channel}: ${v.title}` },
+      icon('youtube'), h('span', {}, h('strong', {}, v.channel), ` · ${v.title}`))));
 }
 
 function youTubeButton(topic, section = null) {
@@ -1516,6 +1563,7 @@ function renderFolderBar({ name, fallback, parent, count, back, practise, menu, 
         h('div', { class: 'menu' },
           menuButton('book', state.notes[notes] ? 'Edit rules and tips' : 'Add rules and tips', () => editNotes(notes)),
           ...menu.filter(Boolean)))),
+    name ? (parent ? videoRow(parent, name) : videoRow(name)) : null,
   ].filter(Boolean));
 }
 

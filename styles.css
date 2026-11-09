@@ -765,3 +765,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .next-step .btn { display: inline-flex; align-items: center; gap: 4px; }
 .next-step .btn .i svg { width: 18px; height: 18px; }
 .next-step.done { color: var(--accent); font-weight: 700; align-items: center; gap: 6px; }
+/* Videos row in an open topic (Learn German with Anja, YourGermanTeacher) */
+.topic-bar { flex-wrap: wrap; }
+.topic-videos { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.topic-videos .hint { margin: 0 2px 0 0; }
+.topic-videos .yt-chip { display: inline-flex; align-items: center; text-decoration: none; font-weight: 500; font-size: 0.88rem; max-width: 100%; }
+.topic-videos .yt-chip strong { font-weight: 800; }
+.topic-videos .yt-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topic-videos { min-width: 0; max-width: 100%; }
+.topic-videos .yt-chip { min-width: 0; box-sizing: border-box; }
+.topic-videos .yt-chip > span { min-width: 0; }
