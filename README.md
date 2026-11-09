@@ -63,7 +63,7 @@ Without sync, each browser keeps its own list. To have the same list on your pho
 
 1. Go to <https://console.firebase.google.com> → **Create a project** (any name, e.g. `wortschatz-coach`). You can turn off Google Analytics.
 2. **Build → Authentication → Get started → Sign-in method → Google → Enable → Save.**
-3. Still in Authentication: **Settings → Authorized domains → Add domain →** `aleena24.github.io`.
+3. Still in Authentication: **Settings → Authorized domains → Add domain →** `aleena024009.github.io`.
 4. **Build → Firestore Database → Create database →** pick a location near you → *Start in production mode*.
 5. In Firestore, open the **Rules** tab, replace everything with this and press **Publish** (so each person can only read and write their own words):
    ```
@@ -100,9 +100,9 @@ Run the parser tests with `npm test` (Node 20+).
 
 ## Deploy for free on GitHub Pages (HTTPS, installable)
 
-1. Push this repository to GitHub (it's already set up as `Aleena24/Wortschatz-Coach`).
+1. Push this repository to GitHub (it's already set up as `Aleena024009/Wortschatz-Coach`).
 2. On GitHub (already done for this repo): **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: `main`, folder `/ (root)` → Save**.
-3. After about a minute the app is live at **https://aleena24.github.io/Wortschatz-Coach/**.
+3. After about a minute the app is live at **https://aleena024009.github.io/Wortschatz-Coach/**.
 
 All paths are relative, so the `/Wortschatz-Coach/` sub-folder works as it is.
 
@@ -136,7 +136,7 @@ An API key in the frontend can be read by anyone who opens the page, who can the
    |---|---|
    | `ANTHROPIC_API_KEY` | your key (`sk-ant-…`) |
    | `APP_PASSCODE` | any passcode you choose. Strongly recommended: without it, anyone who finds the URL can use your credit |
-   | `ALLOWED_ORIGIN` | `https://aleena24.github.io` (lets the GitHub Pages copy call the function) |
+   | `ALLOWED_ORIGIN` | `https://aleena024009.github.io` (lets the GitHub Pages copy call the function) |
 4. Deploy. You get a URL like `https://wortschatz-coach-xyz.vercel.app`.
 5. In the app, open **Optional: AI helper**:
    - **Using the Vercel copy of the app**: leave *AI endpoint* empty and enter your passcode.
