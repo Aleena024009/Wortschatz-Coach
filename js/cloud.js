@@ -79,6 +79,11 @@ export async function saveNotes(uid, notes, updatedAt) {
   await api.fs.setDoc(metaDoc(uid), { notes, notesUpdatedAt: updatedAt }, { mergeFields: ['notes', 'notesUpdatedAt'] });
 }
 
+// The learning path: topics and sub-topics in the order to learn them.
+export async function saveOrder(uid, order, updatedAt) {
+  await api.fs.setDoc(metaDoc(uid), { order, orderUpdatedAt: updatedAt }, { mergeFields: ['order', 'orderUpdatedAt'] });
+}
+
 // Live updates. With `since` = 0 the first snapshot is the whole list; otherwise only the words
 // stamped after `since` are read (each word read counts against the free daily reads). A snapshot
 // holds every write up to its newest stamp, so nothing stamped earlier can still be missing.

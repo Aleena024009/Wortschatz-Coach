@@ -74,6 +74,8 @@ const state = {
   catsUpdatedAt: 0,
   notes: {}, // rules and tips per topic or sub-topic (see noteKey)
   notesUpdatedAt: 0,
+  order: [], // the learning path: topics and "topic › sub-topic" keys, first to learn first
+  orderUpdatedAt: 0,
   user: null,
   unsubscribe: null,
   syncStatus: '',
@@ -115,6 +117,13 @@ function saveNotes() {
   persist(db.setMeta('notes', state.notes));
   persist(db.setMeta('notesUpdatedAt', state.notesUpdatedAt));
   if (state.user) cloudSave(cloud.saveNotes(state.user.uid, state.notes, state.notesUpdatedAt));
+}
+
+function saveOrder() {
+  state.orderUpdatedAt = Date.now();
+  persist(db.setMeta('order', state.order));
+  persist(db.setMeta('orderUpdatedAt', state.orderUpdatedAt));
+  if (state.user) cloudSave(cloud.saveOrder(state.user.uid, state.order, state.orderUpdatedAt));
 }
 
 // Saves changed words on this device and, when signed in, to your account.
@@ -418,14 +427,26 @@ function searched(list) {
 }
 
 // Topics in list order (a pasted list keeps its heading order); words without one come last.
+// Position in the learning path; topics not in it yet come after, in the order they were added.
+const orderIndex = (key) => {
+  const i = state.order.indexOf(key);
+  return i < 0 ? Infinity : i;
+};
+const byOrder = (keyOf) => (a, b) => {
+  const ia = orderIndex(keyOf(a));
+  const ib = orderIndex(keyOf(b));
+  return ia === ib ? 0 : ia < ib ? -1 : 1;
+};
+
 function topicNames() {
   const names = [...new Set(state.words.map((w) => w.topic || ''))];
-  return [...names.filter(Boolean), ...names.filter((t) => !t)];
+  return [...names.filter(Boolean).sort(byOrder((t) => t)), ...names.filter((t) => !t)];
 }
 
 // Sections of a topic, in list order.
 function sectionNames(topic) {
   return [...new Set(state.words.filter((w) => (w.topic || '') === topic).map((w) => w.subtopic || ''))]
+    .sort(byOrder((sec) => noteKey(topic, sec)))
     .sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1));
 }
 
@@ -448,13 +469,13 @@ function renderTopicSelect(select, subSelect) {
   select.hidden = !names.some(Boolean);
   select.replaceChildren(
     h('option', { value: 'all' }, 'All topics'),
-    ...names.map((t) => h('option', { value: t }, (t || 'Other words') + count(state.words.filter((w) => (w.topic || '') === t)))));
+    ...names.map((t, i) => h('option', { value: t }, (t ? `${i + 1}. ${t}` : 'Other words') + count(state.words.filter((w) => (w.topic || '') === t)))));
   select.value = current[0];
   const shownSubs = current[0] === 'all' ? [] : sectionNames(current[0]).filter(Boolean);
   subSelect.hidden = !shownSubs.length;
   subSelect.replaceChildren(
     h('option', { value: '' }, 'All sub-topics'),
-    ...shownSubs.map((sec) => h('option', { value: sec }, sec + count(state.words.filter((w) => (w.topic || '') === current[0] && w.subtopic === sec)))));
+    ...shownSubs.map((sec, i) => h('option', { value: sec }, `${i + 1}. ${sec}` + count(state.words.filter((w) => (w.topic || '') === current[0] && w.subtopic === sec)))));
   subSelect.value = current[1] || '';
 }
 
@@ -723,6 +744,11 @@ async function renameTopic(old) {
     saveSettings();
   }
   if (state.openTopic === old) state.openTopic = name;
+  // Keep its place in the learning path (and its sub-topics' places).
+  if (state.order.some((k) => k === old || k.startsWith(`${old} › `))) {
+    state.order = state.order.map((k) => (k === old ? name : k.startsWith(`${old} › `) ? name + k.slice(old.length) : k));
+    saveOrder();
+  }
   saveWords(words);
   refresh();
   toast(`Renamed to “${name}”.`);
@@ -1085,6 +1111,16 @@ function onCloudMeta(meta) {
   } else if (state.notesUpdatedAt > notesAt) {
     cloudSave(cloud.saveNotes(state.user.uid, state.notes, state.notesUpdatedAt));
   }
+  const orderAt = meta.orderUpdatedAt || 0;
+  if (Array.isArray(meta.order) && orderAt > state.orderUpdatedAt) {
+    state.order = meta.order;
+    state.orderUpdatedAt = orderAt;
+    persist(db.setMeta('order', state.order));
+    persist(db.setMeta('orderUpdatedAt', orderAt));
+    refresh();
+  } else if (state.orderUpdatedAt > orderAt) {
+    cloudSave(cloud.saveOrder(state.user.uid, state.order, state.orderUpdatedAt));
+  }
 }
 
 async function onUserChanged(user) {
@@ -1193,7 +1229,7 @@ function groupedCards(list, withHeads) {
 }
 
 // One folder tile: a topic on the overview, or a sub-topic inside a topic.
-function folderTile(name, detail, open, picking, parent = null) {
+function folderTile(name, detail, open, picking, parent = null, step = 0) {
   const picked = picking?.has(name);
   const choose = () => {
     if (!picking) return open();
@@ -1208,6 +1244,7 @@ function folderTile(name, detail, open, picking, parent = null) {
     onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } },
   },
   picking ? h('span', { class: 'tick', 'aria-hidden': 'true', icon: picked ? 'check' : null }) : null,
+  step && !picking ? h('span', { class: 'step-badge' }, parent ? `Part ${step}` : `Step ${step}`) : null,
   h('div', { class: 'tile-main' }, titlePair(name, 'h3', 'Other words')),
   h('div', { class: 'tile-foot' },
     h('span', { class: 'count' }, icon('folder'), detail),
@@ -1216,7 +1253,8 @@ function folderTile(name, detail, open, picking, parent = null) {
 
 function topicTile(topic, count) {
   const subs = sectionNames(topic).filter(Boolean).length;
-  return folderTile(topic, `${subs ? `${plural(subs, 'sub-topic')} · ` : ''}${plural(count, 'word')}`, () => openTopic(topic), state.organise);
+  const step = topic ? topicNames().filter(Boolean).indexOf(topic) + 1 : 0;
+  return folderTile(topic, `${subs ? `${plural(subs, 'sub-topic')} · ` : ''}${plural(count, 'word')}`, () => openTopic(topic), state.organise, null, step);
 }
 
 async function renameSection(topic, old) {
@@ -1229,6 +1267,10 @@ async function renameSection(topic, old) {
     saveSettings();
   }
   if (state.openSection === old) state.openSection = name;
+  if (state.order.includes(noteKey(topic, old))) {
+    state.order = state.order.map((k) => (k === noteKey(topic, old) ? noteKey(topic, name) : k));
+    saveOrder();
+  }
   saveWords(words);
   refresh();
 }
@@ -1271,6 +1313,42 @@ function swapLanguages(words, name) {
   saveWords(words);
   refresh();
   toast('Swapped German and English.');
+}
+
+// Moves a topic (or a sub-topic within its topic) one step earlier or later in the learning path.
+function moveInPath(topic, section, delta) {
+  const keys = section === undefined
+    ? topicNames().filter(Boolean)
+    : sectionNames(topic).filter(Boolean).map((sec) => noteKey(topic, sec));
+  const key = section === undefined ? topic : noteKey(topic, section);
+  const i = keys.indexOf(key);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= keys.length) return;
+  [keys[i], keys[j]] = [keys[j], keys[i]];
+  // Write the whole visible order back, so every item gets a fixed place.
+  state.order = [...keys, ...state.order.filter((k) => !keys.includes(k))];
+  saveOrder();
+  renderWords();
+}
+
+// What comes after this topic or sub-topic in the learning path.
+function nextStep(topic, section) {
+  if (section !== null && section !== undefined) {
+    const subs = sectionNames(topic).filter(Boolean);
+    const next = subs[subs.indexOf(section) + 1];
+    if (next) return { topic, section: next, label: next };
+  }
+  const topics = topicNames().filter(Boolean);
+  const next = topics[topics.indexOf(topic) + 1];
+  return next ? { topic: next, section: null, label: next } : null;
+}
+
+function nextStepButton(topic, section) {
+  const next = nextStep(topic, section);
+  if (!next) return h('li', { class: 'next-step done' }, icon('check'), 'You reached the end of the learning path. Wunderbar!');
+  return h('li', { class: 'next-step' },
+    h('button', { class: 'btn primary', onclick: () => openTopic(next.topic, next.section) },
+      `Next: ${topicGerman(next.label) || next.label}`, h('span', { class: 'i', icon: 'next' })));
 }
 
 const menuButton = (iconName, label, onclick, cls) => h('button', { class: cls, onclick }, icon(iconName), label);
@@ -1458,6 +1536,8 @@ function renderTopicBar(topic, words) {
     practise: words.length ? () => practiseIn(topic) : null,
     notes: noteKey(topic),
     menu: [
+      topic ? menuButton('back', 'Learn earlier (move up in the path)', () => moveInPath(topic, undefined, -1)) : null,
+      topic ? menuButton('next', 'Learn later (move down in the path)', () => moveInPath(topic, undefined, 1)) : null,
       topic ? menuButton('edit', 'Rename topic', () => renameTopic(topic)) : null,
       menuButton('swap', 'Swap German and English', () => swapLanguages(words, topic || 'Other words')),
       topic && others.length ? menuSelect('Make this a sub-topic of:', others.map((t) => [t, t]), (parent) => {
@@ -1481,6 +1561,8 @@ function renderSectionBar(topic, section, words) {
     practise: words.length ? () => practiseIn(topic + SEP + section) : null,
     notes: noteKey(topic, section),
     menu: [
+      menuButton('back', 'Learn earlier (move up)', () => moveInPath(topic, section, -1)),
+      menuButton('next', 'Learn later (move down)', () => moveInPath(topic, section, 1)),
       menuButton('edit', 'Rename sub-topic', () => renameSection(topic, section)),
       menuButton('swap', 'Swap German and English', () => swapLanguages(words, section)),
       menuSelect('Move to:', [[MOVE_OUT, 'Its own topic'], ...topicNames().filter((t) => t && t !== topic).map((t) => [t, `Sub-topic of ${t}`])], (target) => {
@@ -1565,7 +1647,7 @@ function renderWords() {
       // An open sub-topic: just its words.
       const ws = inside.filter((w) => (w.subtopic || '') === state.openSection);
       renderSectionBar(topic, state.openSection, ws);
-      list.replaceChildren(...(ws.length ? ws.map(wordCard) : empty('No words of this category here.')));
+      list.replaceChildren(...(ws.length ? [...ws.map(wordCard), nextStepButton(topic, state.openSection)] : empty('No words of this category here.')));
       return;
     }
     renderTopicBar(topic, inside);
@@ -1575,9 +1657,10 @@ function renderWords() {
     list.className = subs.length ? 'cards topics' : 'cards';
     list.replaceChildren(...(inside.length
       ? [
-        ...subs.map(([sec, n]) => folderTile(sec, plural(n, 'word'), () => openTopic(topic, sec), null, topic)),
+        ...subs.map(([sec, n]) => folderTile(sec, plural(n, 'word'), () => openTopic(topic, sec), null, topic, sectionNames(topic).filter(Boolean).indexOf(sec) + 1)),
         subs.length && loose.length ? h('li', { class: 'topic-head' }, h('h3', {}, 'Other words in this topic'), h('span', { class: 'count' }, plural(loose.length, 'word'))) : null,
         ...loose.map(wordCard),
+        topic ? nextStepButton(topic, null) : null,
       ].filter(Boolean)
       : empty('No words of this category in this topic.')));
   }
@@ -2169,7 +2252,7 @@ function setView(view) {
 
 function exportBackup() {
   const words = state.words.map(({ audio: _audio, ...w }) => w);
-  const data = { app: 'wortschatz-coach', version: 1, exported: new Date().toISOString(), categories: state.categories, words, notes: state.notes };
+  const data = { app: 'wortschatz-coach', version: 1, exported: new Date().toISOString(), categories: state.categories, words, notes: state.notes, order: state.order };
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
   const a = h('a', { href: url, download: `wortschatz-backup-${new Date().toISOString().slice(0, 10)}.json` });
   document.body.append(a);
@@ -2196,6 +2279,12 @@ async function importBackup(file) {
     }
     if (notesAdded) {
       saveNotes();
+      renderWords();
+    }
+    // The learning path from the file is used only if this device has none yet.
+    if (Array.isArray(data.order) && !state.order.length) {
+      state.order = data.order.filter((k) => typeof k === 'string');
+      saveOrder();
       renderWords();
     }
     toast(`Imported ${plural(added, 'word')}${notesAdded ? ` and ${plural(notesAdded, 'set')} of rules and tips` : ''}${duplicates ? `, skipped ${duplicates} duplicates` : ''}.`);
@@ -2390,6 +2479,8 @@ async function init() {
     state.categories = await db.getMeta('categories', null);
     state.catsUpdatedAt = await db.getMeta('categoriesUpdatedAt', 0);
     state.notes = await db.getMeta('notes', {});
+    state.order = await db.getMeta('order', []);
+    state.orderUpdatedAt = await db.getMeta('orderUpdatedAt', 0);
     state.notesUpdatedAt = await db.getMeta('notesUpdatedAt', 0);
     $('draft').value = await db.getMeta('draft', '');
   } catch {
