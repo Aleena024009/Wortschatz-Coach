@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseWordList, uniqueTextWords, looksLikeProse, germanPart } from '../js/parser.js';
-import { respell } from '../js/respell.js';
+import { respell, malayalam } from '../js/respell.js';
 
 test('parses the example list with levels, articles and overrides', () => {
   const { words, unparsed } = parseWordList(`A1
@@ -162,4 +162,11 @@ test('finds the German half of a topic name on either side', () => {
     'W-fragen – W-questions': 'W-fragen', 'Zeitangaben – Time Expressions': 'Zeitangaben', 'Numbers 0–20': '', 'Die Zahlen': 'Die Zahlen',
   };
   for (const [name, german] of Object.entries(names)) assert.equal(germanPart(name), german, name);
+});
+
+test('pronunciation in Malayalam letters', () => {
+  assert.equal(malayalam('Guten Morgen'), 'ഗൂടെൻ മൊർഗെൻ');
+  assert.equal(malayalam('der Hund'), 'ഡേർ ഹുന്റ്');
+  assert.equal(malayalam('Danke'), 'ഡങ്കെ');
+  assert.equal(malayalam('Auf Wiedersehen'), 'ഔഫ് വീഡെർസേയെൻ');
 });

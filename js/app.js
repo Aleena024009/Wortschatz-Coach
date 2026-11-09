@@ -1,9 +1,9 @@
 import { CEFR, parseWordList, normalizeKey, uniqueTextWords, looksLikeProse, splitArticle, guessPos, stripNumbering, germanPart } from './parser.js';
-import { respell } from './respell.js';
+import { respell, malayalam } from './respell.js';
 import * as speech from './speech.js';
 import * as audio from './audio.js';
 import * as db from './db.js';
-import { translate, toEnglish, translateToEnglish } from './translate.js';
+import { translate, toEnglish, translateToEnglish, toMalayalam } from './translate.js';
 import * as hd from './hd-voice.js';
 import * as cloud from './cloud.js';
 import { mergeWords, isNewer } from './sync.js';
@@ -55,7 +55,7 @@ function loadSettings() {
 }
 
 const settings = Object.assign(
-  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '', autoplay: true, shuffle: false, showAnswers: true, trDir: 'en-de', practiceMode: 'cards', quizKind: 'de-en' },
+  { voiceURI: '', rate: 0.85, source: 'recording', theme: 'auto', filter: 'all', topic: 'all', addCategory: 'A1', listOrder: 'en-de', aiEndpoint: '', aiPasscode: '', autoplay: true, shuffle: false, showAnswers: true, trDir: 'en-de', practiceMode: 'cards', quizKind: 'de-en', malayalam: true },
   loadSettings(),
 );
 const state = {
@@ -413,7 +413,8 @@ function searched(list) {
   const q = state.search.trim().toLowerCase();
   if (!q) return list;
   return list.filter((w) => fullGerman(w).toLowerCase().includes(q) || w.english.toLowerCase().includes(q) || (w.topic || '').toLowerCase().includes(q)
-    || (hasForms(w) && w.forms.some((f) => f.toLowerCase().includes(q))));
+    || (hasForms(w) && w.forms.some((f) => f.toLowerCase().includes(q)))
+    || (w.malayalam || '').includes(q));
 }
 
 // Topics in list order (a pasted list keeps its heading order); words without one come last.
@@ -540,15 +541,31 @@ function respellingEl(w) {
   return h('span', { class: 'respell auto', title: 'Automatic guess, may be wrong. Capitals = stressed syllable.' }, guess);
 }
 
+// How to say the German, written in Malayalam letters (ഗൂടെൻ മൊർഗെൻ).
+function malayalamSoundEl(w) {
+  if (!settings.malayalam) return null;
+  const text = malayalam(fullGerman(w));
+  return text ? h('span', { class: 'respell ml', lang: 'ml', title: 'How to say it, in Malayalam letters (approximate)' }, text) : null;
+}
+
+// The meaning in Malayalam, under the English.
+function malayalamMeaning(text) {
+  return settings.malayalam && text ? h('div', { class: 'malayalam', lang: 'ml' }, text) : null;
+}
+
 function soundRow(w) {
-  const parts = [respellingEl(w), w.ipa ? h('span', { class: 'ipa' }, formatIpa(w.ipa)) : null].filter(Boolean);
+  const parts = [respellingEl(w), malayalamSoundEl(w), w.ipa ? h('span', { class: 'ipa' }, formatIpa(w.ipa)) : null].filter(Boolean);
   return parts.length ? h('div', { class: 'sound' }, parts) : null;
 }
 
 function exampleRow(w, sourceEl) {
   if (!w.example) return null;
+  const sound = settings.malayalam && !w.example.startsWith('Plural:') ? malayalam(w.example) : '';
   return h('div', { class: 'sentence' },
-    h('span', { lang: 'de' }, w.example),
+    h('span', {},
+      h('span', { lang: 'de' }, w.example),
+      sound ? h('span', { class: 'sentence-ml', lang: 'ml' }, sound) : null,
+      malayalamMeaning(w.exampleMl)),
     h('button', { class: 'icon-btn small', icon: 'play', 'aria-label': 'Play example sentence', onclick: () => say(w.example, sourceEl) }),
   );
 }
@@ -718,6 +735,8 @@ function editWord(w) {
   const german = h('input', { value: fullGerman(w), lang: 'de', required: true, autocapitalize: 'off', spellcheck: 'false' });
   const english = h('input', { value: w.english, required: true });
   const example = h('input', { value: w.example || '', lang: 'de', placeholder: 'Der Hund bellt.' });
+  const mlMeaning = h('input', { value: w.malayalam || '', lang: 'ml', placeholder: 'നായ' });
+  const mlExample = h('input', { value: w.exampleMl || '', lang: 'ml', placeholder: 'നായ കുരയ്ക്കുന്നു.' });
   const forms = h('input', { value: hasForms(w) ? w.forms.join(', ') : '', lang: 'de', placeholder: 'lerne, lernst, lernt, lernen, lernt, lernen' });
   const names = categoryNames();
   const level = h('select', {},
@@ -769,6 +788,8 @@ function editWord(w) {
       }
       w.english = en;
       w.example = example.value.trim();
+      w.malayalam = mlMeaning.value.trim();
+      w.exampleMl = mlExample.value.trim();
       const formList = forms.value.split(',').map((f) => f.trim()).filter(Boolean);
       if (formList.length === 6) w.forms = formList;
       else if (!formList.length) delete w.forms;
@@ -789,7 +810,9 @@ function editWord(w) {
     class: 'link-btn swap', type: 'button',
     onclick: () => { [german.value, english.value] = [english.value, german.value]; },
   }, icon('swap'), 'Swap German and English'),
+  field('Malayalam meaning', mlMeaning),
   field('Example sentence (optional)', example),
+  field('Example sentence in Malayalam (optional)', mlExample),
   w.pos === 'verb' || hasForms(w) ? field('Present tense: ich, du, er/sie/es, wir, ihr, sie/Sie (6 forms, with commas)', forms) : null,
   h('div', { class: 'edit-grid' }, field('Category', level), field('Topic', topic), sectionField),
   h('div', { class: 'row' },
@@ -821,13 +844,14 @@ function wordCard(w) {
   const card = h('li', { class: `card ${colorClass(w.level)}` });
   const voice = h('div', { class: 'source compact', 'data-id': w.id });
   queueMicrotask(() => renderAvailability(voice, w));
-  const respelling = respellingEl(w);
+  const sounds = [respellingEl(w), malayalamSoundEl(w)].filter(Boolean);
   card.append(
     h('div', { class: 'card-head' },
       h('div', { class: 'text' },
         h('div', { class: 'word', lang: 'de' }, w.article ? h('span', { class: 'article' }, w.article) : null, w.german),
         h('div', { class: 'english' }, w.english),
-        respelling ? h('div', { class: 'sound' }, respelling) : null,
+        malayalamMeaning(w.malayalam),
+        sounds.length ? h('div', { class: 'sound' }, ...sounds) : null,
       ),
       h('div', { class: 'card-side' },
         playButton(w, null),
@@ -1659,6 +1683,31 @@ function renderAdd() {
   renderTopicPicker('bulk-topic');
 }
 
+// New words get their Malayalam meaning (and example) from a free machine translation,
+// one at a time in the background. Edit a card to correct it.
+const mlQueue = [];
+let mlRunning = false;
+async function fillMalayalam(words) {
+  mlQueue.push(...words.filter((w) => !w.malayalam && !w.mlTried));
+  if (mlRunning || !navigator.onLine) return;
+  mlRunning = true;
+  while (mlQueue.length) {
+    const w = mlQueue.shift();
+    if (!state.words.includes(w)) continue;
+    try {
+      w.malayalam = await toMalayalam(w.english, 'en');
+      if (w.example && !w.exampleMl && !w.example.startsWith('Plural:')) w.exampleMl = await toMalayalam(w.example, 'de');
+    } catch {
+      // Offline or the service is busy: leave it; the edit form can fill it in.
+    }
+    w.mlTried = true;
+    saveWords([w]);
+    if (state.view === 'words') renderWords();
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  mlRunning = false;
+}
+
 function addWords(items) {
   const byKey = new Map(state.words.map((w) => [normalizeKey(w.article, w.german, w.english), w]));
   const existing = new Set(byKey.keys());
@@ -1691,6 +1740,7 @@ function addWords(items) {
   sortWords();
   saveWords([...fresh, ...topicFilled]);
   refresh();
+  fillMalayalam(fresh);
   return { added: fresh.length, duplicates };
 }
 
@@ -1840,7 +1890,7 @@ function renderPractice() {
     playButton(w, source),
     source,
     revealed
-      ? h('div', { class: 'answer' }, soundRow(w), h('div', { class: 'english' }, w.english), exampleRow(w, source), hasForms(w) ? conjugationTable(w) : null)
+      ? h('div', { class: 'answer' }, soundRow(w), h('div', { class: 'english' }, w.english), malayalamMeaning(w.malayalam), exampleRow(w, source), hasForms(w) ? conjugationTable(w) : null)
       : h('button', { class: 'btn', onclick: reveal }, 'Show answer'),
   );
 }
@@ -1937,6 +1987,7 @@ function renderQuiz() {
     q.picked ? h('div', { class: `quiz-feedback ${q.picked === w.id ? 'good' : 'bad'}` },
       h('strong', {}, q.picked === w.id ? 'Richtig! ' : 'Not quite. '),
       h('span', { lang: 'de' }, fullGerman(w)), ` = ${w.english}`,
+      malayalamMeaning(w.malayalam),
       w.example ? h('div', { class: 'quiz-example', lang: 'de' }, w.example) : null) : null,
     q.picked ? h('button', { class: 'btn primary wide', id: 'quiz-next', onclick: nextQuiz }, q.index + 1 < q.queue.length ? 'Next question' : 'See my score') : null,
   );
@@ -2035,6 +2086,7 @@ function renderSettings() {
     ? `${plural(state.words.length, 'word')} saved on this device and in your account.`
     : `${plural(state.words.length, 'word')} saved on this device${dbOk ? ' (IndexedDB)' : ''}. Clearing browser data deletes them, so sign in to sync or export a backup now and then.`;
   renderStorage();
+  $('ml-toggle').checked = settings.malayalam;
   renderSegmented();
   renderHdBox();
   renderSyncBox();
@@ -2378,6 +2430,11 @@ async function init() {
     state.quiz = null;
     renderQuiz();
   }));
+  $('ml-toggle').addEventListener('change', (e) => {
+    settings.malayalam = e.target.checked;
+    saveSettings();
+    refresh();
+  });
   $('fc-autoplay').addEventListener('change', (e) => {
     settings.autoplay = e.target.checked;
     saveSettings();

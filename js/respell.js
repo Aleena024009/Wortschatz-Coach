@@ -197,3 +197,83 @@ export function respell(german) {
     .filter(Boolean)
     .join(' ');
 }
+
+// ---------- German pronunciation in Malayalam letters, e.g. "Schwester" -> "ഷ്വെസ്റ്റെർ" ----------
+// Uses the same sound units as the respelling. Approximate: ö, ü and the "ch" sounds have no
+// Malayalam letter, so the nearest one is used (ö → ഓ/ഒ, ü → ഊ/ഉ, ach → ഖ, ich → ഷ).
+
+const ML_CONSONANT = {
+  b: 'ബ', p: 'പ', d: 'ഡ', t: 'ട', g: 'ഗ', k: 'ക', f: 'ഫ', v: 'വ', s: 'സ', z: 'സ', sh: 'ഷ', ch: 'ച്ച',
+  ks: 'ക്സ', tsy: 'ത്സ്യ', kv: 'ക്വ', ng: 'ങ്ങ', pf: 'പ്ഫ', ts: 'ത്സ', y: 'യ', h: 'ഹ', l: 'ല', m: 'മ', n: 'ന', r: 'റ',
+};
+// Final or before another consonant: chillu letters where Malayalam has them.
+const ML_FINAL = { n: 'ൻ', l: 'ൽ', r: 'ർ', m: 'ം', ng: 'ങ്' };
+// [vowel letter, vowel sign] for each vowel sound.
+const ML_VOWEL = {
+  'a+': ['ആ', 'ാ'], 'a-': ['അ', ''], 'e+': ['ഏ', 'േ'], 'e-': ['എ', 'െ'], 'ä+': ['ഏ', 'േ'], 'ä-': ['എ', 'െ'],
+  'i+': ['ഈ', 'ീ'], 'i-': ['ഇ', 'ി'], 'o+': ['ഓ', 'ോ'], 'o-': ['ഒ', 'ൊ'], 'ö+': ['ഓ', 'ോ'], 'ö-': ['ഒ', 'ൊ'],
+  'u+': ['ഊ', 'ൂ'], 'u-': ['ഉ', 'ു'], 'ü+': ['ഊ', 'ൂ'], 'ü-': ['ഉ', 'ു'], 'y+': ['ഊ', 'ൂ'], 'y-': ['ഉ', 'ു'],
+  ah: ['ആ', 'ാ'], ay: ['ഏ', 'േ'], ee: ['ഈ', 'ീ'], oh: ['ഓ', 'ോ'], oo: ['ഊ', 'ൂ'], ur: ['ഓ', 'ോ'], ew: ['ഊ', 'ൂ'],
+  eye: ['ഐ', 'ൈ'], ow: ['ഔ', 'ൗ'], oy: ['ഓയ്', 'ോയ്'],
+};
+const ML_FIXED = {
+  der: 'ഡേർ', die: 'ഡീ', das: 'ഡാസ്', den: 'ഡേൻ', dem: 'ഡേം', des: 'ഡെസ്', ein: 'ഐൻ', eine: 'ഐനെ', einen: 'ഐനെൻ',
+  sich: 'സിഷ്', zu: 'ത്സൂ', und: 'ഉണ്ട്', ich: 'ഇഷ്', ist: 'ഇസ്റ്റ്', nicht: 'നിഷ്റ്റ്', mit: 'മിറ്റ്', es: 'എസ്',
+};
+const ML_PREFIXES = { zer: 'ത്സെർ', ver: 'ഫെർ', ent: 'എന്റ്', emp: 'എംപ്', be: 'ബെ', ge: 'ഗെ', er: 'എർ' };
+const ML_LETTERS = {
+  a: 'ആ', b: 'ബേ', c: 'ത്സേ', d: 'ഡേ', e: 'ഏ', f: 'എഫ്', g: 'ഗേ', h: 'ഹാ', i: 'ഈ', j: 'യോട്ട്', k: 'കാ', l: 'എൽ', m: 'എം',
+  n: 'എൻ', o: 'ഓ', p: 'പേ', q: 'കൂ', r: 'എർ', s: 'എസ്', t: 'ടേ', u: 'ഊ', v: 'ഫൗ', w: 'വേ', x: 'ഇക്സ്', y: 'ഉപ്സിലോൺ', z: 'ത്സെറ്റ്',
+};
+
+function malayalamPlain(word) {
+  const units = tokenize(word);
+  if (!units.some((u) => u.v)) return '';
+  setVowelLengths(units, units.filter((u) => u.v).length);
+  const lastVowel = units.map((u) => u.v).lastIndexOf(true);
+  let out = '';
+  units.forEach((u, i) => {
+    const prev = units[i - 1];
+    const next = units[i + 1];
+    if (u.v) {
+      // An "e" in the last syllable of a longer word is short (lerne, Hause, sehen).
+      const short = u.letter === 'e' && !u.fixed && i === lastVowel && units.some((x, j) => x.v && j < i);
+      const key = u.fixed ? u.sound : `${u.letter}${u.long && !short ? '+' : '-'}`;
+      const [letter, sign] = ML_VOWEL[key] || ML_VOWEL[u.sound] || ['അ', ''];
+      if (!prev) out += letter;
+      else if (!prev.v) out += sign;
+      else out += `യ${sign}`; // two vowels in a row: glide with ya (sehen → സേയെൻ)
+      return;
+    }
+    // "ch" after a, o, u, au is the throat sound (Bach); otherwise the soft one (ich).
+    let sound = u.sound;
+    if (sound === 'kh') sound = prev && prev.v && (/[aou]/.test(prev.letter) || prev.sound === 'ow') ? 'kh-hard' : 'sh';
+    let letter = sound === 'kh-hard' ? 'ഖ' : ML_CONSONANT[sound] || '';
+    if (!letter) return;
+    // Spellings Malayalam readers know: nt → ന്റ, st → സ്റ്റ, nk / ng+k → ങ്ക.
+    if (sound === 't' && out.endsWith('ൻ')) { out = out.slice(0, -1); letter = 'ന്റ'; }
+    else if (sound === 't' && prev?.sound === 's') letter = 'റ്റ';
+    if (sound === 'n' && next && (next.sound === 'k' || next.sound === 'g')) { out += 'ങ്'; return; }
+    if (next && next.v) out += letter;
+    else out += ML_FINAL[sound] || `${letter}്`;
+  });
+  return out;
+}
+
+function malayalamWord(raw) {
+  const word = raw.toLowerCase().replace(/[^a-zäöüß-]/g, '');
+  if (!word) return /\d/.test(raw) ? raw.replace(/[^\d]/g, '') : '';
+  if (ML_FIXED[word]) return ML_FIXED[word];
+  if (word.length === 1 && ML_LETTERS[word]) return ML_LETTERS[word];
+  if (word.includes('-')) return word.split('-').filter(Boolean).map(malayalamWord).join(' ');
+  for (const [prefix, sound] of Object.entries(ML_PREFIXES)) {
+    const rest = word.slice(prefix.length);
+    if (NOT_PREFIXED.some((stem) => word.startsWith(stem))) break;
+    if (word.startsWith(prefix) && rest.length >= 4 && tokenize(rest).some((u) => u.v)) return sound + malayalamPlain(rest);
+  }
+  return malayalamPlain(word);
+}
+
+export function malayalam(german) {
+  return german.split(/\s+/).filter(Boolean).map(malayalamWord).filter(Boolean).join(' ');
+}

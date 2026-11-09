@@ -158,3 +158,12 @@ export async function translateToEnglish(german) {
   });
   return { results: machine.map((r) => ({ english: r.article ? `${r.article} ${r.german}` : r.german, german: plain, article })), source: 'machine' };
 }
+
+// English (or German) → Malayalam with the free MyMemory service: '' when it has no answer.
+export async function toMalayalam(text, from = 'en') {
+  const params = new URLSearchParams({ langpair: `${from}|ml`, q: text });
+  const res = await fetch(`${MYMEMORY}?${params}`);
+  if (!res.ok) throw new Error(`Translation service HTTP ${res.status}`);
+  const out = ((await res.json()).responseData?.translatedText || '').trim();
+  return /[\u0D00-\u0D7F]/.test(out) ? out : '';
+}
