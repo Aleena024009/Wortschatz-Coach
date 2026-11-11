@@ -2180,13 +2180,13 @@ function stepCard(delta) {
   autoPlay();
 }
 
-// Swipe the card left for the next word, right for the previous one.
-// The card follows the finger; a short swipe springs back.
-function swipeCards(card) {
+// Swipe a card left for the next one, right for the previous one.
+// The card follows the finger; a short swipe (or one not allowed) springs back.
+function swipeCards(card, allowed, go) {
   let start = null, dx = 0, swiping = false;
   const reset = () => { card.style.transition = ''; card.style.transform = ''; card.style.opacity = ''; };
   card.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse' || state.fc.order.length < 2) return;
+    if (e.pointerType === 'mouse' || e.target.closest('input, textarea, select') || !allowed(0)) return;
     start = { x: e.clientX, y: e.clientY }; dx = 0; swiping = false;
   });
   card.addEventListener('pointermove', (e) => {
@@ -2207,14 +2207,14 @@ function swipeCards(card) {
     if (!start) return;
     start = null;
     if (!swiping) return;
+    const dir = dx < 0 ? 1 : -1;
     const far = Math.abs(dx) > Math.min(90, card.offsetWidth / 4);
     card.style.transition = 'transform 0.18s ease, opacity 0.18s ease';
-    if (!far) { card.style.transform = ''; card.style.opacity = ''; setTimeout(reset, 200); return; }
-    const dir = dx < 0 ? 1 : -1;
+    if (!far || !allowed(dir)) { card.style.transform = ''; card.style.opacity = ''; setTimeout(reset, 200); return; }
     card.style.transform = `translateX(${-dir * card.offsetWidth}px)`;
     card.style.opacity = '0';
     setTimeout(() => {
-      stepCard(dir);
+      go(dir);
       card.style.transition = 'none';
       card.style.transform = `translateX(${dir * 60}px)`;
       requestAnimationFrame(() => {
@@ -2683,7 +2683,9 @@ async function init() {
 
   $('fc-prev').addEventListener('click', () => stepCard(-1));
   $('fc-next').addEventListener('click', () => stepCard(1));
-  swipeCards($('flashcard'));
+  swipeCards($('flashcard'), () => state.fc.order.length > 1, stepCard);
+  // Quiz: swipe left for the next question, once this one is answered.
+  swipeCards($('quiz'), (dir) => dir !== -1 && !!state.quiz?.picked && state.quiz.index < state.quiz.queue.length, () => nextQuiz());
   $('fc-shuffle').addEventListener('click', toggleShuffle);
   document.addEventListener('keydown', onKey);
 
