@@ -30,6 +30,7 @@ const ICONS = {
   chip: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>',
   mute: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="m16 9 5 6M21 9l-5 6"/></svg>',
   swap: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7"/></svg>',
+  bulb: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>',
   cross: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
@@ -153,6 +154,9 @@ function h(tag, attrs = {}, ...children) {
   return el;
 }
 
+// Like el.replaceChildren, but skips null/false (as h() does) instead of printing "null".
+const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((c) => c != null && c !== false));
+
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const fullGerman = (w) => (w.article ? `${w.article} ${w.german}` : w.german);
 const formatIpa = (ipa) => (/^[/[]/.test(ipa) ? ipa : `/${ipa}/`);
@@ -169,7 +173,7 @@ function chunk(list, size) {
 let toastTimer;
 function toast(message, actionLabel, action) {
   const el = $('toast');
-  el.replaceChildren(h('span', {}, message));
+  fill(el, h('span', {}, message));
   if (actionLabel) el.append(h('button', { onclick: () => { action(); el.hidden = true; } }, actionLabel));
   el.hidden = false;
   clearTimeout(toastTimer);
@@ -185,7 +189,7 @@ const rateFor = () => RECORDING_RATE[settings.rate] || 1;
 function showSource(el, source) {
   if (!el) return;
   el.className = `source avail ${source.kind || ''}`;
-  el.replaceChildren(icon(SOURCE_ICON[source.kind] || 'speaker'), source.href
+  fill(el, icon(SOURCE_ICON[source.kind] || 'speaker'), source.href
     ? h('a', { href: source.href, target: '_blank', rel: 'noopener' }, source.label, icon('out'))
     : source.label);
   el.hidden = false;
@@ -234,14 +238,14 @@ async function soundCheck() {
   try {
     await audio.play(beep());
   } catch (err) {
-    out.replaceChildren(h('strong', {}, icon('cross'), 'Your browser refused to play sound. '),
+    fill(out, h('strong', {}, icon('cross'), 'Your browser refused to play sound. '),
       `(${err.name}) Allow sound and autoplay for this site: click the icon left of the address → Site settings → Sound: Allow, Autoplay: Allow. Then reload.`);
     return;
   }
   await new Promise((r) => setTimeout(r, 1200));
   const st = audio.status();
   if (st.played > 0.2) {
-    out.replaceChildren(
+    fill(out, 
       h('strong', {}, icon('check'), 'The app and your browser played the beep. '),
       'If you heard nothing, the sound is muted outside the app. Check, in this order:',
       h('ol', {},
@@ -252,7 +256,7 @@ async function soundCheck() {
       ),
     );
   } else {
-    out.replaceChildren(h('strong', {}, icon('cross'), 'The browser accepted the sound but did not play it. '),
+    fill(out, h('strong', {}, icon('cross'), 'The browser accepted the sound but did not play it. '),
       'Allow sound and autoplay for this site (icon left of the address → Site settings), then reload.');
   }
 }
@@ -467,13 +471,13 @@ function renderTopicSelect(select, subSelect) {
   const current = settings.topic.split(SEP);
   const count = (list) => ` (${list.length})`;
   select.hidden = !names.some(Boolean);
-  select.replaceChildren(
+  fill(select, 
     h('option', { value: 'all' }, 'All topics'),
     ...names.map((t, i) => h('option', { value: t }, (t ? `${i + 1}. ${t}` : 'Other words') + count(state.words.filter((w) => (w.topic || '') === t)))));
   select.value = current[0];
   const shownSubs = current[0] === 'all' ? [] : sectionNames(current[0]).filter(Boolean);
   subSelect.hidden = !shownSubs.length;
-  subSelect.replaceChildren(
+  fill(subSelect, 
     h('option', { value: '' }, 'All sub-topics'),
     ...shownSubs.map((sec, i) => h('option', { value: sec }, `${i + 1}. ${sec}` + count(state.words.filter((w) => (w.topic || '') === current[0] && w.subtopic === sec)))));
   subSelect.value = current[1] || '';
@@ -485,7 +489,7 @@ function renderTopicPicker(id, names = topicNames().filter(Boolean), kind = 'top
   const select = $(`${id}-select`);
   const input = $(id);
   const current = select.value;
-  select.replaceChildren(
+  fill(select, 
     h('option', { value: '' }, `No ${kind}`),
     ...names.map((t) => h('option', { value: t }, t)),
     h('option', { value: NEW_TOPIC }, `+ New ${kind}…`),
@@ -534,7 +538,7 @@ function renderCatTabs(container) {
   }
   const tabs = [['all', 'All', list.length, ''], ...state.categories.map((c) => [c.name, c.name, list.filter((w) => w.level === c.name).length, `cat${c.color}`])];
   if (noLevel) tabs.push(['none', 'No level', noLevel, '']);
-  container.replaceChildren(
+  fill(container, 
     ...tabs.map(([value, label, count, color]) =>
       h('button', {
         class: `cat-tab ${color}`,
@@ -616,7 +620,7 @@ function renderAvailability(el, w) {
   el.className = `source avail ${a.kind}${compact ? ' compact' : ''}`;
   // On word cards only a missing voice is worth a line; the rest would just be clutter.
   el.hidden = compact && a.kind !== 'none';
-  el.replaceChildren(icon(SOURCE_ICON[a.kind]), a.text);
+  fill(el, icon(SOURCE_ICON[a.kind]), a.text);
   if (a.kind === 'none') {
     el.append(' · ', h('button', { class: 'link-btn', onclick: () => { setView('settings'); downloadHd(); } }, 'Get free voice'));
   }
@@ -786,7 +790,7 @@ function editWord(w) {
   const fillSections = () => {
     const sections = topic.value ? sectionNames(topic.value).filter(Boolean) : [];
     const keep = topic.value === (w.topic || '') ? w.subtopic || '' : '';
-    section.replaceChildren(
+    fill(section, 
       h('option', { value: '' }, 'No sub-topic'),
       ...sections.map((sec) => h('option', { value: sec, selected: sec === keep }, sec)),
       h('option', { value: NEW_TOPIC }, '+ New sub-topic…'));
@@ -920,7 +924,7 @@ function renderVoiceBanner() {
   banner.hidden = !state.voicesReady || hasGermanVoice() || state.hd.ready;
   if (banner.hidden) return;
   const downloading = state.hd.progress !== null;
-  banner.replaceChildren(
+  fill(banner, 
     h('div', {},
       h('strong', {}, 'No German voice in this browser. '),
       downloading
@@ -976,19 +980,19 @@ async function removeHd() {
 function renderHdBox() {
   const box = $('hd-box');
   if (state.hd.ready) {
-    box.replaceChildren(
+    fill(box, 
       h('p', {}, h('span', { class: 'ok' }, icon('check'), 'Free German voice installed. '), 'Every word and sentence can be spoken, also offline. It is "Thorsten", an open-source voice that runs on this device.'),
       h('button', { class: 'btn small', onclick: removeHd }, `Remove (frees ${hd.MODEL_SIZE_MB} MB)`),
     );
   } else if (state.hd.progress !== null) {
     const pct = Math.round(state.hd.progress * 100);
-    box.replaceChildren(
+    fill(box, 
       h('p', { class: 'status' }, `Downloading the German voice… ${pct}%`),
       h('div', { class: 'progress-bar' }, h('span', { style: `width: ${pct}%` })),
       h('p', { class: 'hint' }, 'Keep this page open until it finishes.'),
     );
   } else {
-    box.replaceChildren(
+    fill(box, 
       h('p', {}, h('strong', {}, 'Free German voice for every word and sentence. '),
         `Works in every browser (also Brave and Firefox), and offline once downloaded. Download once: ${hd.MODEL_SIZE_MB} MB.`),
       hasGermanVoice() ? h('p', { class: 'hint' }, `Your browser already has a German voice (${browserVoiceName()}), so this is optional.`) : null,
@@ -1013,7 +1017,7 @@ function signInError(err) {
 function renderSyncBox() {
   const box = $('sync-box');
   if (!cloud.configured) {
-    box.replaceChildren(h('div', { class: 'sync-card' },
+    fill(box, h('div', { class: 'sync-card' },
       h('p', {}, h('strong', {}, 'Your words are saved on this device only. '),
         'To have them on every phone, PC and browser, cloud sync needs a free Firebase project (one-time setup, about 10 minutes). The steps are in the README under “Cloud sync”.'),
       h('p', { class: 'hint' }, 'Until then, use Export backup / Import backup below to move your words.'),
@@ -1021,13 +1025,13 @@ function renderSyncBox() {
     return;
   }
   if (!state.user) {
-    box.replaceChildren(h('div', { class: 'sync-card' },
+    fill(box, h('div', { class: 'sync-card' },
       h('p', {}, 'Sign in to keep your words on all your devices. Sign in with the same Google account on your phone and PC, and your list is the same everywhere.'),
       h('button', { class: 'btn primary', onclick: () => cloud.signIn().catch((err) => { if (err.code !== 'auth/popup-closed-by-user') toast(signInError(err)); }) }, 'Sign in with Google'),
     ));
     return;
   }
-  box.replaceChildren(h('div', { class: 'sync-card' },
+  fill(box, h('div', { class: 'sync-card' },
     h('p', {}, h('span', { class: 'ok' }, icon('check'), 'Syncing '), `as ${state.user.email || state.user.displayName || 'you'}. Changes appear on your other devices automatically.`),
     state.syncStatus ? h('p', { class: 'hint' }, state.syncStatus) : null,
     h('button', { class: 'btn small', onclick: () => cloud.signOut() }, 'Sign out'),
@@ -1514,7 +1518,7 @@ function renderNotes(key) {
     folded = details.open ? rest : [...rest, key];
     try { localStorage.setItem('wc.foldedNotes', JSON.stringify(folded)); } catch { /* storage blocked */ }
   });
-  box.replaceChildren(details);
+  fill(box, details);
 }
 
 function editNotes(key) {
@@ -1549,7 +1553,7 @@ function renderFolderBar({ name, fallback, parent, count, back, practise, menu, 
   backBtn.title = parent ? `Back to ${parent}` : 'Back to all topics';
   backBtn.setAttribute('aria-label', backBtn.title);
   $('topic-bar').hidden = false;
-  $('topic-bar').replaceChildren(...[
+  fill($('topic-bar'), ...[
     h('div', { class: 'topic-title' },
       parent ? h('button', { class: 'crumb', onclick: back }, topicGerman(parent) || parent) : null,
       titlePair(name, 'h2', fallback),
@@ -1631,7 +1635,7 @@ function renderOrganiseBar(names) {
   const target = h('select', { 'aria-label': 'Topic to put them into' },
     h('option', { value: NEW_TOPIC }, '+ A new topic…'),
     ...targets.map((t) => h('option', { value: t }, t)));
-  bar.replaceChildren(
+  fill(bar, 
     h('div', { class: 'topic-title' },
       h('h2', {}, 'Group topics'),
       h('span', { class: 'count' }, picked.length ? `${plural(picked.length, 'topic')} ticked. They become sub-topics of:` : 'Tick the topics that belong together, e.g. all the “Numbers …” ones.')),
@@ -1672,17 +1676,17 @@ function renderWords() {
   } else if (q) {
     // Search always looks through every topic.
     const found = searched(base);
-    list.replaceChildren(...(found.length
+    fill(list, ...(found.length
       ? [h('li', { class: 'search-note' }, `${found.length} ${found.length === 1 ? 'match' : 'matches'} for “${q}” in all topics`), ...groupedCards(found, names.some(Boolean))]
       : empty(`No words match “${q}” in any topic.`)));
   } else if (!names.some(Boolean)) {
-    list.replaceChildren(...(base.length ? base.map(wordCard) : empty('No words in this category yet.')));
+    fill(list, ...(base.length ? base.map(wordCard) : empty('No words in this category yet.')));
   } else if (state.openTopic === null) {
     // Topic overview: one tile per topic; open a tile to see what is inside.
     const tiles = names.map((t) => [t, base.filter((w) => (w.topic || '') === t).length]).filter(([, n]) => n);
     if (state.organise) renderOrganiseBar(names);
     list.className = 'cards topics';
-    list.replaceChildren(
+    fill(list, 
       ...(tiles.length ? tiles.map(([t, n]) => topicTile(t, n)) : empty('No words in this category yet.')),
       !state.organise && tiles.length > 1
         ? h('li', { class: 'organise-row' }, h('button', { class: 'link-btn', onclick: () => { state.organise = new Set(); renderWords(); } }, 'Group topics into one…'))
@@ -1695,7 +1699,7 @@ function renderWords() {
       // An open sub-topic: just its words.
       const ws = inside.filter((w) => (w.subtopic || '') === state.openSection);
       renderSectionBar(topic, state.openSection, ws);
-      list.replaceChildren(...(ws.length ? [...ws.map(wordCard), nextStepButton(topic, state.openSection)] : empty('No words of this category here.')));
+      fill(list, ...(ws.length ? [...ws.map(wordCard), nextStepButton(topic, state.openSection)] : empty('No words of this category here.')));
       return;
     }
     renderTopicBar(topic, inside);
@@ -1703,7 +1707,7 @@ function renderWords() {
       .map((sec) => [sec, inside.filter((w) => w.subtopic === sec).length]).filter(([, n]) => n);
     const loose = inside.filter((w) => !w.subtopic);
     list.className = subs.length ? 'cards topics' : 'cards';
-    list.replaceChildren(...(inside.length
+    fill(list, ...(inside.length
       ? [
         ...subs.map(([sec, n]) => folderTile(sec, plural(n, 'word'), () => openTopic(topic, sec), null, topic, sectionNames(topic).filter(Boolean).indexOf(sec) + 1)),
         subs.length && loose.length ? h('li', { class: 'topic-head' }, h('h3', {}, 'Other words in this topic'), h('span', { class: 'count' }, plural(loose.length, 'word'))) : null,
@@ -1720,7 +1724,7 @@ const translationLabel = (r) => (r.article ? `${r.article} ${r.german}` : r.germ
 
 function renderTranslate() {
   const select = $('tr-category');
-  select.replaceChildren(...categoryNames().map((n) => h('option', { value: n, selected: n === settings.addCategory }, n)));
+  fill(select, ...categoryNames().map((n) => h('option', { value: n, selected: n === settings.addCategory }, n)));
   document.querySelectorAll('#tr-dir button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.dir === settings.trDir)));
   $('tr-input').placeholder = settings.trDir === 'de-en' ? 'z. B. das Wochenende, oder: Bis morgen!' : 'e.g. the weekend, or: See you tomorrow!';
   $('tr-input').lang = settings.trDir === 'de-en' ? 'de' : 'en';
@@ -1744,7 +1748,7 @@ async function translateBox(e) {
     $('tr-note').textContent = !results.length ? `No translation found for “${input}”.`
       : source === 'machine' ? 'Machine translation: usually right for sentences, but please check with your teacher.'
         : 'From Wiktionary (written by people). The first one is the most common meaning.';
-    list.replaceChildren(...results.map((r) => {
+    fill(list, ...results.map((r) => {
       const germanLabel = translationLabel(r);
       const stand = { id: `tr:${germanLabel}`, article: r.article, german: r.german, english: r.english };
       const btn = h('button', { class: 'icon-btn play small', icon: 'speaker', 'aria-label': `Say ${germanLabel}` });
@@ -1757,7 +1761,7 @@ async function translateBox(e) {
             pos: guessPos(r.article, r.german, r.english),
           }]);
           add.disabled = true;
-          add.replaceChildren(icon('check'), added ? `Added to ${settings.addCategory || 'your words'}` : 'Already in your words');
+          fill(add, icon('check'), added ? `Added to ${settings.addCategory || 'your words'}` : 'Already in your words');
         },
       }, '+ Add to my words');
       // German → English shows the English meaning big, with the German it belongs to under it.
@@ -1776,7 +1780,7 @@ async function translateBox(e) {
 
 function renderAdd() {
   if (!categoryNames().includes(settings.addCategory)) settings.addCategory = state.categories[0]?.name || '';
-  $('cat-picker').replaceChildren(
+  fill($('cat-picker'), 
     ...state.categories.map((c) =>
       h('button', {
         class: `cat-option cat${c.color}`,
@@ -1808,7 +1812,7 @@ function renderAdd() {
   $('draft').placeholder = enFirst
     ? 'dog - der Hund\nto go - gehen\nexperience = die Erfahrung\nto complain - sich beschweren'
     : 'der Hund - dog\ngehen - to go\ndie Erfahrung = experience\nsich beschweren - to complain';
-  $('recent').replaceChildren(...state.recent.map((r) => h('li', {}, r)));
+  fill($('recent'), ...state.recent.map((r) => h('li', {}, r)));
   renderTopicPicker('in-topic');
   renderSectionPicker();
   renderTopicPicker('bulk-topic');
@@ -2010,11 +2014,11 @@ function renderPractice() {
   $('fc-answers').checked = settings.showAnswers;
   el.className = `flashcard ${w ? colorClass(w.level) : ''}`;
   if (!w) {
-    el.replaceChildren(h('p', { class: 'empty' }, state.words.length ? 'No words in this category yet.' : 'Add some words first, then practise them here.'));
+    fill(el, h('p', { class: 'empty' }, state.words.length ? 'No words in this category yet.' : 'Add some words first, then practise them here.'));
     return;
   }
   const source = sourceLine(w);
-  el.replaceChildren(
+  fill(el, 
     h('div', { class: 'progress' }, `${index + 1} / ${order.length}`),
     h('div', { class: 'fc-topic' }, [w.level, topicGerman(w.subtopic || '') || w.subtopic || topicGerman(w.topic || '') || w.topic].filter(Boolean).join(' · ')),
     h('div', { class: 'word', lang: 'de' }, w.article ? h('span', { class: 'article' }, w.article) : null, w.german),
@@ -2053,22 +2057,79 @@ function startQuiz(ids) {
   };
 }
 
-// Three wrong answers, preferably from the same sub-topic (harder, and teaches the differences).
+// How alike two answers look: same topic, same article, same kind of word,
+// similar length, same start or ending. Higher = easier to mix up.
+function likeness(w, x) {
+  const a = answerText(w).toLowerCase(), b = answerText(x).toLowerCase();
+  const core = (t) => t.replace(/^(der|die|das|to|the|a|an) /, '');
+  const ca = core(a), cb = core(b);
+  let score = 0;
+  if (x.topic === w.topic) score += 3;
+  if (x.topic === w.topic && (x.subtopic || '') === (w.subtopic || '')) score += 2;
+  if (settings.quizKind !== 'de-en') {
+    if ((x.article || '') === (w.article || '')) score += 3; // the article must not give the answer away
+  } else if (/^to /.test(a) === /^to /.test(b)) score += 2; // verb with verb
+  if ((ca.match(/ /g) || []).length === (cb.match(/ /g) || []).length) score += 1;
+  score -= Math.abs(ca.length - cb.length) / 3;
+  if (ca.slice(0, 2) === cb.slice(0, 2)) score += 2;
+  if (ca.length > 3 && ca.slice(-3) === cb.slice(-3)) score += 2;
+  return score + Math.random() * 1.5; // a little variety each time
+}
+
+const isLetter = (x) => /^[a-zäöüß]$/i.test(x.german);
+
+// Three wrong answers that look like the right one, so you must really know it.
 function quizOptions(w) {
   const label = answerText(w).toLowerCase();
+  const meaning = w.english.toLowerCase();
   const seen = new Set([label]);
-  const near = shuffled(quizWords().filter((x) => x.topic === w.topic && (x.subtopic || '') === (w.subtopic || '')));
-  const rest = shuffled(quizWords());
-  const all = shuffled(visibleSource());
+  const pool = [...quizWords(), ...visibleSource().filter((x) => x.topic === w.topic)];
+  const ranked = pool
+    .filter((x) => x.id !== w.id && x.english.toLowerCase() !== meaning && isLetter(x) === isLetter(w))
+    .map((x) => [likeness(w, x), x])
+    .sort((p, q) => q[0] - p[0]);
   const wrong = [];
-  for (const x of [...near, ...rest, ...all]) {
+  for (const [, x] of [...ranked, ...shuffled(visibleSource()).map((x) => [0, x])]) {
     const t = answerText(x).toLowerCase();
     if (wrong.length === 3) break;
-    if (seen.has(t)) continue;
+    if (seen.has(t) || x.id === w.id) continue;
     seen.add(t);
     wrong.push(x);
   }
   return shuffled([w, ...wrong]);
+}
+
+// Hints, one more each tap: a letter clue, then a sentence or meaning clue
+// (and one wrong answer is crossed out).
+function quizHints(w) {
+  const kind = settings.quizKind;
+  const answer = answerText(w);
+  const core = answer.replace(/^(der|die|das|to) /i, '');
+  const hints = [];
+  const letters = core.replace(/[^\p{L}]/gu, '').length;
+  const start = `${answer.slice(0, answer.length - core.length)}${core[0]}…`;
+  hints.push(h('span', {}, 'Starts with ', h('strong', { lang: kind === 'de-en' ? 'en' : 'de' }, start), ` · ${letters} letters`));
+  const example = w.example && !/^plural:/i.test(w.example) ? w.example : '';
+  const blanked = example && kind !== 'de-en'
+    ? example.replace(new RegExp(w.german.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '____') : '';
+  if (kind === 'listen') hints.push(h('span', {}, 'It means: ', h('strong', {}, w.english)));
+  else if (kind === 'de-en' && w.malayalam && settings.malayalam !== false) hints.push(h('span', {}, 'In Malayalam: ', h('strong', { lang: 'ml' }, w.malayalam)));
+  else if (blanked && blanked !== example) hints.push(h('span', { lang: 'de' }, blanked));
+  else if (kind === 'de-en' && example) hints.push(h('span', { lang: 'de' }, example));
+  else hints.push(h('span', {}, 'One wrong answer is crossed out.'));
+  return hints;
+}
+
+function showHint() {
+  const q = state.quiz;
+  const w = quizWord();
+  if (!q || q.picked || !w) return;
+  q.hints = Math.min((q.hints || 0) + 1, quizHints(w).length);
+  if (q.hints === 2 && !q.removed) {
+    const wrong = q.options.filter((o) => o.id !== w.id);
+    q.removed = wrong[Math.floor(Math.random() * wrong.length)]?.id;
+  }
+  renderQuiz();
 }
 
 function quizWord() {
@@ -2080,7 +2141,7 @@ function renderQuiz() {
   document.querySelectorAll('#quiz-kind button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.kind === settings.quizKind)));
   const el = $('quiz');
   if (quizWords().length < 2) {
-    el.replaceChildren(h('p', { class: 'empty' }, 'A quiz needs at least 2 words here. Choose a bigger topic or category.'));
+    fill(el, h('p', { class: 'empty' }, 'A quiz needs at least 2 words here. Choose a bigger topic or category.'));
     return;
   }
   if (!state.quiz || state.quiz.key !== quizDeckKey()) startQuiz();
@@ -2097,7 +2158,7 @@ function renderQuiz() {
   const ask = listen ? 'Which word do you hear?'
     : settings.quizKind === 'en-de' ? 'What is this in German?' : 'What does this mean?';
   el.className = `flashcard quiz ${colorClass(w.level)}`;
-  el.replaceChildren(
+  fill(el, 
     h('div', { class: 'quiz-top' },
       h('span', { class: 'progress' }, `${q.index + 1} / ${q.queue.length}`),
       h('span', { class: 'quiz-score' }, icon('check'), String(q.score))),
@@ -2105,12 +2166,16 @@ function renderQuiz() {
     h('div', { class: 'fc-topic' }, ask),
     listen ? null : h('div', { class: 'word', lang: settings.quizKind === 'en-de' ? 'en' : 'de' }, promptText(w)),
     listen || q.picked ? play : null,
+    !q.picked && q.hints ? h('div', { class: 'quiz-hints' }, ...quizHints(w).slice(0, q.hints).map((x) => h('div', {}, x))) : null,
+    !q.picked && (q.hints || 0) < quizHints(w).length
+      ? h('button', { class: 'btn small quiz-hint-btn', onclick: showHint }, icon('bulb'), q.hints ? 'Another hint' : 'Hint')
+      : null,
     h('div', { class: 'quiz-options' }, ...q.options.map((o, i) => {
       const right = o.id === w.id;
-      const cls = !q.picked ? '' : right ? ' right' : o.id === q.picked ? ' wrong' : ' dim';
+      const cls = !q.picked ? (o.id === q.removed ? ' removed' : '') : right ? ' right' : o.id === q.picked ? ' wrong' : ' dim';
       return h('button', {
         class: `quiz-option${cls}`,
-        disabled: !!q.picked,
+        disabled: !!q.picked || o.id === q.removed,
         lang: settings.quizKind === 'de-en' ? 'en' : 'de',
         onclick: () => answerQuiz(o),
       }, h('span', { class: 'key' }, String(i + 1)), answerText(o));
@@ -2143,7 +2208,7 @@ function answerQuiz(option) {
 
 function nextQuiz() {
   const q = state.quiz;
-  Object.assign(q, { index: q.index + 1, picked: null, options: null, played: false });
+  Object.assign(q, { index: q.index + 1, picked: null, options: null, played: false, hints: 0, removed: null });
   renderQuiz();
 }
 
@@ -2154,7 +2219,7 @@ function renderQuizEnd() {
   const praise = pct === 100 ? 'Perfekt!' : pct >= 80 ? 'Sehr gut!' : pct >= 50 ? 'Gut gemacht!' : 'Weiter üben!';
   const missed = [...new Set(q.wrong)].map((id) => visibleSource().find((x) => x.id === id)).filter(Boolean);
   $('quiz').className = 'flashcard quiz';
-  $('quiz').replaceChildren(
+  fill($('quiz'), 
     h('div', { class: 'quiz-result' }, `${q.score} / ${total}`),
     h('div', { class: 'english' }, `${praise} (${pct}%)`),
     missed.length ? h('div', { class: 'quiz-missed' },
@@ -2254,7 +2319,7 @@ function toggleShuffle() {
 // ---------- settings ----------
 
 function renderSettings() {
-  $('cat-list').replaceChildren(
+  fill($('cat-list'), 
     ...state.categories.map((c) =>
       h('li', {},
         h('span', { class: `badge cat${c.color}` }, c.name),
@@ -2289,7 +2354,7 @@ async function renderStorage() {
   } catch {
     /* storage estimate not supported */
   }
-  $('storage-used').replaceChildren(...parts.map((t) => h('li', {}, t)));
+  fill($('storage-used'), ...parts.map((t) => h('li', {}, t)));
 }
 
 function renderVoices() {
@@ -2299,7 +2364,7 @@ function renderVoices() {
   for (const v of voices) {
     options.push(h('option', { value: v.voiceURI, selected: v.voiceURI === settings.voiceURI }, `${v.name} (${v.lang})${v.localService ? '' : ' · online'}`));
   }
-  select.replaceChildren(...options);
+  fill(select, ...options);
   // Without a German browser voice these controls do nothing, so hide them.
   $('browser-voice-field').hidden = !voices.length;
   $('test-voice').hidden = !voices.length;
@@ -2553,6 +2618,7 @@ function onKey(e) {
     const q = state.quiz;
     if (/^[1-4]$/.test(e.key) && q && !q.picked) $('quiz').querySelectorAll('.quiz-option')[Number(e.key) - 1]?.click();
     else if (e.key === 'Enter' && q?.picked && !e.target.closest('button')) nextQuiz();
+    else if (e.key.toLowerCase() === 'h') showHint();
     else if (e.key.toLowerCase() === 'l') $('quiz').querySelector('.icon-btn.play')?.click();
     return;
   }

@@ -709,6 +709,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .quiz-option.right { border-color: #2e9e5b; background: color-mix(in srgb, #2e9e5b 22%, var(--surface)); }
 .quiz-option.wrong { border-color: #d9412b; background: color-mix(in srgb, #d9412b 20%, var(--surface)); }
 .quiz-option.dim { opacity: 0.5; }
+.quiz-option.removed { opacity: 0.35; text-decoration: line-through; }
+.quiz-hint-btn { align-self: center; gap: 6px; }
+.quiz-hint-btn .btn-icon, .quiz-hint-btn svg { width: 18px; height: 18px; }
+.quiz-hints { width: 100%; display: grid; gap: 6px; padding: 10px 14px; border-radius: 12px; text-align: left; line-height: 1.5;
+  background: color-mix(in srgb, var(--gold, #e8b44a) 16%, var(--surface)); overflow-wrap: anywhere; }
 .quiz-option:disabled { cursor: default; }
 .quiz-feedback { width: 100%; padding: 10px 14px; border-radius: 12px; text-align: left; line-height: 1.5; }
 .quiz-feedback.good { background: color-mix(in srgb, #2e9e5b 16%, var(--surface)); }
