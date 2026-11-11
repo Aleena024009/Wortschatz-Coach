@@ -2180,6 +2180,56 @@ function stepCard(delta) {
   autoPlay();
 }
 
+// Swipe the card left for the next word, right for the previous one.
+// The card follows the finger; a short swipe springs back.
+function swipeCards(card) {
+  let start = null, dx = 0, swiping = false;
+  const reset = () => { card.style.transition = ''; card.style.transform = ''; card.style.opacity = ''; };
+  card.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' || state.fc.order.length < 2) return;
+    start = { x: e.clientX, y: e.clientY }; dx = 0; swiping = false;
+  });
+  card.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (!swiping) {
+      if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { start = null; return; } // scrolling
+      if (Math.abs(dx) < 12) return;
+      swiping = true;
+      card.setPointerCapture(e.pointerId);
+    }
+    card.style.transition = 'none';
+    card.style.transform = `translateX(${dx}px) rotate(${dx / 40}deg)`;
+    card.style.opacity = String(1 - Math.min(Math.abs(dx) / 600, 0.4));
+  });
+  const end = () => {
+    if (!start) return;
+    start = null;
+    if (!swiping) return;
+    const far = Math.abs(dx) > Math.min(90, card.offsetWidth / 4);
+    card.style.transition = 'transform 0.18s ease, opacity 0.18s ease';
+    if (!far) { card.style.transform = ''; card.style.opacity = ''; setTimeout(reset, 200); return; }
+    const dir = dx < 0 ? 1 : -1;
+    card.style.transform = `translateX(${-dir * card.offsetWidth}px)`;
+    card.style.opacity = '0';
+    setTimeout(() => {
+      stepCard(dir);
+      card.style.transition = 'none';
+      card.style.transform = `translateX(${dir * 60}px)`;
+      requestAnimationFrame(() => {
+        card.style.transition = 'transform 0.18s ease, opacity 0.18s ease';
+        card.style.transform = ''; card.style.opacity = '';
+        setTimeout(reset, 200);
+      });
+    }, 170);
+  };
+  card.addEventListener('pointerup', end);
+  card.addEventListener('pointercancel', () => { start = null; reset(); });
+  // A swipe that ends on a button must not also press it.
+  card.addEventListener('click', (e) => { if (swiping) { e.stopPropagation(); e.preventDefault(); swiping = false; } }, true);
+}
+
 function shuffled(list) {
   const a = [...list];
   for (let i = a.length - 1; i > 0; i--) {
@@ -2633,6 +2683,7 @@ async function init() {
 
   $('fc-prev').addEventListener('click', () => stepCard(-1));
   $('fc-next').addEventListener('click', () => stepCard(1));
+  swipeCards($('flashcard'));
   $('fc-shuffle').addEventListener('click', toggleShuffle);
   document.addEventListener('keydown', onKey);
 
