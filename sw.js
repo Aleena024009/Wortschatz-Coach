@@ -1,7 +1,7 @@
 // Offline support: the app shell is cached on install, then served cache-first
 // while a fresh copy is fetched in the background (stale-while-revalidate).
 // Bump VERSION whenever you change a file so phones pick up the new version.
-const VERSION = 'wortschatz-v41';
+const VERSION = 'wortschatz-v42';
 // Libraries from CDNs (voice engine, Firebase), kept so they also work offline.
 const CDN_CACHE = 'wortschatz-cdn-v1';
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];

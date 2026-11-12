@@ -1378,6 +1378,11 @@ const isYouTube = (url) => /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.t
 const ANJA = 'Learn German with Anja';
 const YGT = 'YourGermanTeacher';
 const TOPIC_VIDEOS = [
+  // These four cover the whole topic, including parts with general names like "Example Sentences".
+  [/modalverb|modal verb/i, ['RrfgbBp6ScI', 'Introduction to German modal verbs'], ['Zf97cqx9uRA', 'All German modal verbs: the complete guide'], true],
+  [/trennbar|separable/i, ['cEizjiqBrbI', 'German separable verbs explained'], ['8Qu7FCL5YEY', 'Top 20 separable verbs'], true],
+  [/interrogativ/i, null, ['9vVY8U7c-PE', 'welcher, welche, welches: when to use which'], true],
+  [/demonstrativ/i, null, ['FEnjwNX68zU', 'dieser, diese or dieses: when to use which'], true],
   [/numbers 0–20/i, ['T09k-gSi76k', 'Numbers from 0 to 20'], ['Bje6l_koJig', 'German Numbers 1–20']],
   [/numbers \d\d|additional numbers/i, ['o7f26S6Gmo4', 'Numbers from 20 to 100'], ['aqk2YZX8YVw', 'German Numbers 20–100']],
   [/zahlen|numbers/i, ['T09k-gSi76k', 'Numbers from 0 to 20'], ['Bje6l_koJig', 'German Numbers 1–20']],
@@ -1423,8 +1428,9 @@ const YT_LINK = /\[[^\]]+\]\((https:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=
 
 // The two videos for a topic or sub-topic: [{ channel, id, title }], Anja first.
 function topicVideos(topic, section) {
-  for (const name of [section, topic].filter(Boolean)) {
-    const hit = TOPIC_VIDEOS.find(([re]) => re.test(name));
+  const whole = TOPIC_VIDEOS.find(([re, , , all]) => all && re.test(topic));
+  for (const name of whole ? [topic] : [section, topic].filter(Boolean)) {
+    const hit = whole || TOPIC_VIDEOS.find(([re]) => re.test(name));
     if (hit) return [[ANJA, hit[1]], [YGT, hit[2]]].filter(([, v]) => v).map(([channel, [id, title]]) => ({ channel, id, title }));
   }
   return [];
