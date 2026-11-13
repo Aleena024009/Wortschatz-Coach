@@ -1379,6 +1379,15 @@ const ANJA = 'Learn German with Anja';
 const YGT = 'YourGermanTeacher';
 const TOPIC_VIDEOS = [
   // These four cover the whole topic, including parts with general names like "Example Sentences".
+  // Perfekt: one video pair per part; the last one is for the topic itself and its other parts.
+  [/perfekt|past tense/i, ['DO0N4ZPkUus', 'The easy past participle with ge-'], ['cWFjOK9sfBw', 'The perfect tense with haben'], true, [
+    [/mit sein|with sein/i, ['50istPWib_g', 'Perfekt with sein: when to use it'], ['Rd7HUf1x_WI', 'Top 20 verbs with sein in the perfect']],
+    [/-ieren/i, ['Rx3axTMEMSw', 'The easy perfect of verbs with -ieren'], ['mlFEL0D5Kzs', 'Past participles without ge-']],
+    [/gemischt|mixed/i, ['6PlSoDcJWFQ', 'Strong, weak and mixed verbs'], ['4O_zOuFjWTk', 'A trick for the past participle']],
+    [/trennbar|separable/i, ['DO0N4ZPkUus', 'The easy past participle with ge-'], ['mlFEL0D5Kzs', 'Past participles without ge-']],
+    [/beispiel|example/i, ['kFu5ZTL_jzA', 'When to use Perfekt and Präteritum'], ['xzlqufaC6Qk', 'Practice: haben or sein?']],
+  ]],
+  [/präteritum|simple past/i, ['kFu5ZTL_jzA', 'When to use Perfekt and Präteritum'], ['PLHxKBjqfBE', 'How to use and build the Präteritum'], true],
   [/modalverb|modal verb/i, ['RrfgbBp6ScI', 'Introduction to German modal verbs'], ['Zf97cqx9uRA', 'All German modal verbs: the complete guide'], true],
   [/trennbar|separable/i, ['cEizjiqBrbI', 'German separable verbs explained'], ['8Qu7FCL5YEY', 'Top 20 separable verbs'], true],
   [/interrogativ/i, null, ['9vVY8U7c-PE', 'welcher, welche, welches: when to use which'], true],
@@ -1429,8 +1438,9 @@ const YT_LINK = /\[[^\]]+\]\((https:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=
 // The two videos for a topic or sub-topic: [{ channel, id, title }], Anja first.
 function topicVideos(topic, section) {
   const whole = TOPIC_VIDEOS.find(([re, , , all]) => all && re.test(topic));
+  const part = whole && section && (whole[4] || []).find(([re]) => re.test(section));
   for (const name of whole ? [topic] : [section, topic].filter(Boolean)) {
-    const hit = whole || TOPIC_VIDEOS.find(([re]) => re.test(name));
+    const hit = part || whole || TOPIC_VIDEOS.find(([re]) => re.test(name));
     if (hit) return [[ANJA, hit[1]], [YGT, hit[2]]].filter(([, v]) => v).map(([channel, [id, title]]) => ({ channel, id, title }));
   }
   return [];
