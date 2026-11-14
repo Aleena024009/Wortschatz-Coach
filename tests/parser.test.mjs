@@ -178,3 +178,10 @@ test('a sentence starting with der/die/das is not split into article and noun', 
   assert.equal(words[1].article, 'der');
   assert.equal(words[1].german, 'Schlüssel');
 });
+
+test('a German preposition in capitals is the German half of a name', () => {
+  assert.equal(germanPart('AN – at, on'), 'AN');
+  assert.equal(germanPart('IN – in, into'), 'IN');
+  assert.equal(germanPart('Time Expressions – Zeitangaben'), 'Zeitangaben');
+  assert.equal(germanPart('The 12 Months – Die 12 Monate'), 'Die 12 Monate');
+});

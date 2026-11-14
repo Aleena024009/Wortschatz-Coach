@@ -59,7 +59,9 @@ function germanScore(text, known) {
   let score = 0;
   if (/^(der|die|das|den|dem|des|ein|eine)\s/i.test(t)) score += 3;
   if (/[äöüßÄÖÜ]/.test(t)) score += 3;
-  if (/\b(the|of|and|to|a|an|in|for|with)\b/i.test(t)) score -= 3;
+  // Lower-case little words only, so "AN" or "IN" (a German preposition as a heading) still counts as German.
+  if (/\b(the|of|and|to|a|an|in|for|with)\b|^The\b/.test(t)) score -= 3;
+  if (/^[A-ZÄÖÜ]{2,}$/.test(t)) score += 2;
   score += (t.toLowerCase().match(/sch|tz|ei|ie|ung\b|en\b|zw|ch/g) || []).length;
   for (const word of t.toLowerCase().split(/[\s-]+/)) if (known?.has(word)) score += 2;
   return score;

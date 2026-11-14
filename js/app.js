@@ -444,7 +444,8 @@ const byOrder = (keyOf) => (a, b) => {
 
 function topicNames() {
   const names = [...new Set(state.words.map((w) => w.topic || ''))];
-  return [...names.filter(Boolean).sort(byOrder((t) => t)), ...names.filter((t) => !t)];
+  const named = names.filter(Boolean).sort(byOrder((t) => t)).sort((a, b) => topicSection(a) - topicSection(b));
+  return [...named, ...names.filter((t) => !t)];
 }
 
 // Sections of a topic, in list order.
@@ -1255,6 +1256,24 @@ function folderTile(name, detail, open, picking, parent = null, step = 0) {
     picking ? null : h('span', { class: 'tile-actions' }, parent ? youTubeButton(parent, name) : youTubeButton(name), topicPlayButton(name, true))));
 }
 
+// Topic tiles under the A1 plan's headings (1. Grundlagen, 2. Nomen…), when any topic is grammar.
+function groupedTiles(tiles) {
+  const grouped = tiles.some(([t]) => t && topicSection(t) > 0);
+  let current = -1;
+  return tiles.flatMap(([t, n]) => {
+    const sec = t ? topicSection(t) : -1;
+    const head = grouped && t && sec !== current;
+    current = sec;
+    if (!head) return [topicTile(t, n)];
+    const [, german, english] = A1_SECTIONS[sec];
+    const count = tiles.filter(([o]) => o && topicSection(o) === sec).length;
+    return [h('li', { class: 'path-section' },
+      sec ? h('span', { class: 'path-num' }, String(sec)) : h('span', { class: 'path-num vocab', icon: 'book' }),
+      h('div', { class: 'title-pair' }, h('h3', { lang: 'de' }, german), h('span', { class: 'sub' }, english)),
+      h('span', { class: 'count' }, plural(count, 'topic'))), topicTile(t, n)];
+  });
+}
+
 function topicTile(topic, count) {
   const subs = sectionNames(topic).filter(Boolean).length;
   const step = topic ? topicNames().filter(Boolean).indexOf(topic) + 1 : 0;
@@ -1328,6 +1347,10 @@ function moveInPath(topic, section, delta) {
   const i = keys.indexOf(key);
   const j = i + delta;
   if (i < 0 || j < 0 || j >= keys.length) return;
+  if (section === undefined && topicSection(keys[i]) !== topicSection(keys[j])) {
+    toast(`“${topicGerman(topic) || topic}” is already ${delta < 0 ? 'first' : 'last'} in its part of the A1 plan.`);
+    return;
+  }
   [keys[i], keys[j]] = [keys[j], keys[i]];
   // Write the whole visible order back, so every item gets a fixed place.
   state.order = [...keys, ...state.order.filter((k) => !keys.includes(k))];
@@ -1379,6 +1402,24 @@ const A1_ROADMAP = [
   [19, /dativ|dative/i],
   [2, /verben|\bverbs?\b/i],
 ];
+
+// The roadmap's 7 parts; the Words page groups topics under these headings.
+// Topics the roadmap doesn't cover (Familie, Farben…) form a vocabulary group that comes first.
+const A1_SECTIONS = [
+  [0, 'Wortschatz', 'Vocabulary'],
+  [1, 'Grundlagen', 'Basics – Pronouns & Verbs'],
+  [8, 'Nomen, Artikel & Negation', 'Nouns, Articles & Negation'],
+  [16, 'Die Fälle', 'German Cases'],
+  [23, 'Satzbau & Verben', 'Sentence Construction & Verbs'],
+  [29, 'Präpositionen', 'Prepositions'],
+  [34, 'Vergangenheit', 'Past Tense'],
+  [38, 'Konjunktionen', 'Conjunctions & Sentence Connections'],
+];
+const roadmapStep = (name) => A1_ROADMAP.find(([, re]) => re.test(name))?.[0] || 0;
+function topicSection(name) {
+  const step = roadmapStep(name);
+  return A1_SECTIONS.findLastIndex(([from]) => step >= from);
+}
 
 // Puts names in roadmap order. A name the roadmap doesn't cover (e.g. vocabulary like "Familie")
 // keeps its place right after the item before it.
@@ -1772,7 +1813,7 @@ function renderWords() {
     if (state.organise) renderOrganiseBar(names);
     list.className = 'cards topics';
     fill(list, 
-      ...(tiles.length ? tiles.map(([t, n]) => topicTile(t, n)) : empty('No words in this category yet.')),
+      ...(tiles.length ? groupedTiles(tiles) : empty('No words in this category yet.')),
       !state.organise && tiles.length > 1
         ? h('li', { class: 'organise-row' },
           h('button', { class: 'link-btn', onclick: () => { state.organise = new Set(); renderWords(); } }, 'Group topics into one…'),
