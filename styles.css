@@ -858,3 +858,13 @@ body { line-height: 1.55; }
 /* Long German words break at a syllable with a hyphen, not at a random letter. */
 .title-pair > :first-child, .card .word, .flashcard .word { overflow-wrap: break-word; hyphens: auto; -webkit-hyphens: auto; }
 @media (max-width: 420px) { .topic-bar .title-pair h2 { font-size: 1.35rem; } }
+/* A1 part headings fold open and closed */
+.path-section { padding: 0 0 8px; }
+.path-toggle {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 6px 4px; text-align: left;
+  background: none; border: 0; border-radius: 12px; cursor: pointer; color: inherit; font: inherit;
+}
+.path-toggle:hover, .path-toggle:focus-visible { background: var(--surface-2); }
+.path-toggle .chev { flex: none; width: 28px; text-align: center; color: var(--muted); font-size: 1.1rem; transition: transform 0.2s ease; }
+.path-section.folded .chev { transform: rotate(-90deg); }
+.path-section.folded { border-bottom-style: dashed; }

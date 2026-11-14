@@ -1256,21 +1256,40 @@ function folderTile(name, detail, open, picking, parent = null, step = 0) {
     picking ? null : h('span', { class: 'tile-actions' }, parent ? youTubeButton(parent, name) : youTubeButton(name), topicPlayButton(name, true))));
 }
 
+// Which A1 parts you folded away on the Words page (remembered on this device).
+function foldedParts() {
+  try { return JSON.parse(localStorage.getItem('wc.foldedParts') || '[]'); } catch { return []; }
+}
+function toggleTopicPart(sec) {
+  const folded = foldedParts();
+  const next = folded.includes(sec) ? folded.filter((s) => s !== sec) : [...folded, sec];
+  try { localStorage.setItem('wc.foldedParts', JSON.stringify(next)); } catch { /* storage blocked */ }
+  renderWords();
+}
+
 // Topic tiles under the A1 plan's headings (1. Grundlagen, 2. Nomen…), when any topic is grammar.
+// Tap a heading to fold its topics away or open them again.
 function groupedTiles(tiles) {
   const grouped = tiles.some(([t]) => t && topicSection(t) > 0);
+  if (!grouped) return tiles.map(([t, n]) => topicTile(t, n));
+  const folded = foldedParts();
   let current = -1;
   return tiles.flatMap(([t, n]) => {
     const sec = t ? topicSection(t) : -1;
-    const head = grouped && t && sec !== current;
+    const head = t && sec !== current;
     current = sec;
-    if (!head) return [topicTile(t, n)];
+    const tile = t && folded.includes(sec) ? [] : [topicTile(t, n)];
+    if (!head) return tile;
     const [, german, english] = A1_SECTIONS[sec];
     const count = tiles.filter(([o]) => o && topicSection(o) === sec).length;
-    return [h('li', { class: 'path-section' },
+    const open = !folded.includes(sec);
+    return [h('li', { class: `path-section${open ? '' : ' folded'}` },
+      h('button', { class: 'path-toggle', 'aria-expanded': String(open), onclick: () => toggleTopicPart(sec),
+        title: open ? 'Hide these topics' : 'Show these topics' },
       sec ? h('span', { class: 'path-num' }, String(sec)) : h('span', { class: 'path-num vocab', icon: 'book' }),
-      h('div', { class: 'title-pair' }, h('h3', { lang: 'de' }, german), h('span', { class: 'sub' }, english)),
-      h('span', { class: 'count' }, plural(count, 'topic'))), topicTile(t, n)];
+      h('span', { class: 'title-pair' }, h('h3', { lang: 'de' }, german), h('span', { class: 'sub' }, english)),
+      h('span', { class: 'count' }, plural(count, 'topic')),
+      h('span', { class: 'chev', 'aria-hidden': 'true' }, '▾'))), ...tile];
   });
 }
 
