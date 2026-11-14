@@ -531,7 +531,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .more-menu .menu label { display: grid; gap: 6px; padding: 8px 12px; font-size: 0.85rem; color: var(--muted); }
 
 /* Group topics */
-.organise-row { grid-column: 1 / -1; text-align: center; padding: 6px; }
 .topic-tile .tick {
   width: 26px; height: 26px; flex: none; border-radius: 8px; border: 2px solid var(--border);
   display: grid; place-items: center; font-weight: 800; color: var(--accent-text);

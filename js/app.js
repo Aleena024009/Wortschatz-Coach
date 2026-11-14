@@ -66,7 +66,6 @@ const state = {
   search: '',
   openTopic: null, // topic opened on the Words page (null = topic overview)
   openSection: null, // sub-topic opened inside it (null = the topic itself)
-  organise: null, // topics ticked in "Group topics" mode (a Set), or null
   reading: false,
   busy: false,
   voicesReady: false,
@@ -444,7 +443,9 @@ const byOrder = (keyOf) => (a, b) => {
 
 function topicNames() {
   const names = [...new Set(state.words.map((w) => w.topic || ''))];
-  const named = names.filter(Boolean).sort(byOrder((t) => t)).sort((a, b) => topicSection(a) - topicSection(b));
+  // Always in A1 order: by part, then by roadmap step; vocabulary topics keep your own order.
+  const named = names.filter(Boolean).sort(byOrder((t) => t))
+    .sort((a, b) => topicSection(a) - topicSection(b) || roadmapStep(a) - roadmapStep(b));
   return [...named, ...names.filter((t) => !t)];
 }
 
@@ -1256,14 +1257,14 @@ function folderTile(name, detail, open, picking, parent = null, step = 0) {
     picking ? null : h('span', { class: 'tile-actions' }, parent ? youTubeButton(parent, name) : youTubeButton(name), topicPlayButton(name, true))));
 }
 
-// Which A1 parts you folded away on the Words page (remembered on this device).
-function foldedParts() {
-  try { return JSON.parse(localStorage.getItem('wc.foldedParts') || '[]'); } catch { return []; }
+// Which A1 parts you opened on the Words page (remembered on this device). All start closed.
+function openParts() {
+  try { return JSON.parse(localStorage.getItem('wc.openParts') || '[]'); } catch { return []; }
 }
 function toggleTopicPart(sec) {
-  const folded = foldedParts();
-  const next = folded.includes(sec) ? folded.filter((s) => s !== sec) : [...folded, sec];
-  try { localStorage.setItem('wc.foldedParts', JSON.stringify(next)); } catch { /* storage blocked */ }
+  const opened = openParts();
+  const next = opened.includes(sec) ? opened.filter((s) => s !== sec) : [...opened, sec];
+  try { localStorage.setItem('wc.openParts', JSON.stringify(next)); } catch { /* storage blocked */ }
   renderWords();
 }
 
@@ -1272,17 +1273,17 @@ function toggleTopicPart(sec) {
 function groupedTiles(tiles) {
   const grouped = tiles.some(([t]) => t && topicSection(t) > 0);
   if (!grouped) return tiles.map(([t, n]) => topicTile(t, n));
-  const folded = foldedParts();
+  const opened = openParts();
   let current = -1;
   return tiles.flatMap(([t, n]) => {
     const sec = t ? topicSection(t) : -1;
     const head = t && sec !== current;
     current = sec;
-    const tile = t && folded.includes(sec) ? [] : [topicTile(t, n)];
+    const tile = t && !opened.includes(sec) ? [] : [topicTile(t, n)];
     if (!head) return tile;
     const [, german, english] = A1_SECTIONS[sec];
     const count = tiles.filter(([o]) => o && topicSection(o) === sec).length;
-    const open = !folded.includes(sec);
+    const open = opened.includes(sec);
     return [h('li', { class: `path-section${open ? '' : ' folded'}` },
       h('button', { class: 'path-toggle', 'aria-expanded': String(open), onclick: () => toggleTopicPart(sec),
         title: open ? 'Hide these topics' : 'Show these topics' },
@@ -1296,7 +1297,7 @@ function groupedTiles(tiles) {
 function topicTile(topic, count) {
   const subs = sectionNames(topic).filter(Boolean).length;
   const step = topic ? topicNames().filter(Boolean).indexOf(topic) + 1 : 0;
-  return folderTile(topic, `${subs ? `${plural(subs, 'sub-topic')} · ` : ''}${plural(count, 'word')}`, () => openTopic(topic), state.organise, null, step);
+  return folderTile(topic, `${subs ? `${plural(subs, 'sub-topic')} · ` : ''}${plural(count, 'word')}`, () => openTopic(topic), null, null, step);
 }
 
 async function renameSection(topic, old) {
@@ -1338,7 +1339,6 @@ function moveTopicsInto(topics, parent) {
     w.topic = parent;
   });
   saveWords(words);
-  state.organise = null;
   openTopic(parent);
   toast(`${plural(topics.length, 'topic')} moved into “${parent}” as sub-topics.`);
 }
@@ -1366,8 +1366,9 @@ function moveInPath(topic, section, delta) {
   const i = keys.indexOf(key);
   const j = i + delta;
   if (i < 0 || j < 0 || j >= keys.length) return;
-  if (section === undefined && topicSection(keys[i]) !== topicSection(keys[j])) {
-    toast(`“${topicGerman(topic) || topic}” is already ${delta < 0 ? 'first' : 'last'} in its part of the A1 plan.`);
+  // Topics follow the A1 plan; only topics on the same step (or two vocabulary topics) can swap.
+  if (section === undefined && (topicSection(keys[i]) !== topicSection(keys[j]) || roadmapStep(keys[i]) !== roadmapStep(keys[j]))) {
+    toast(`“${topicGerman(topic) || topic}” stays in its place in the A1 plan.`);
     return;
   }
   [keys[i], keys[j]] = [keys[j], keys[i]];
@@ -1438,30 +1439,6 @@ const roadmapStep = (name) => A1_ROADMAP.find(([, re]) => re.test(name))?.[0] ||
 function topicSection(name) {
   const step = roadmapStep(name);
   return A1_SECTIONS.findLastIndex(([from]) => step >= from);
-}
-
-// Puts names in roadmap order. A name the roadmap doesn't cover (e.g. vocabulary like "Familie")
-// keeps its place right after the item before it.
-function roadmapSort(names) {
-  let last = 0;
-  const ranked = names.map((name, i) => {
-    const hit = A1_ROADMAP.find(([, re]) => re.test(name));
-    if (hit) last = hit[0];
-    return { name, step: hit ? hit[0] : last, i };
-  });
-  return ranked.sort((a, b) => a.step - b.step || a.i - b.i).map((r) => r.name);
-}
-
-// Arranges every topic, and the sub-topics inside each, in the order of the A1 grammar roadmap.
-function arrangeByRoadmap() {
-  if (!confirm('Arrange your topics and sub-topics in A1 grammar order (pronouns and verbs first, past tense and conjunctions last)? This replaces the order you set.')) return;
-  const topics = roadmapSort(topicNames().filter(Boolean));
-  const sections = topics.flatMap((t) => roadmapSort(sectionNames(t).filter(Boolean)).map((sec) => noteKey(t, sec)));
-  const keys = [...topics, ...sections];
-  state.order = [...keys, ...state.order.filter((k) => !keys.includes(k))];
-  saveOrder();
-  renderWords();
-  toast('Topics arranged in A1 grammar order.');
 }
 
 // What comes after this topic or sub-topic in the learning path.
@@ -1771,34 +1748,6 @@ function renderSectionBar(topic, section, words) {
   });
 }
 
-// "Group topics" on the topic overview: tick several topics and put them into one topic as its sub-topics.
-function renderOrganiseBar(names) {
-  const bar = $('topic-bar');
-  bar.hidden = false;
-  const picked = [...state.organise];
-  const targets = names.filter((t) => t && !state.organise.has(t));
-  const target = h('select', { 'aria-label': 'Topic to put them into' },
-    h('option', { value: NEW_TOPIC }, '+ A new topic…'),
-    ...targets.map((t) => h('option', { value: t }, t)));
-  fill(bar, 
-    h('div', { class: 'topic-title' },
-      h('h2', {}, 'Group topics'),
-      h('span', { class: 'count' }, picked.length ? `${plural(picked.length, 'topic')} ticked. They become sub-topics of:` : 'Tick the topics that belong together, e.g. all the “Numbers …” ones.')),
-    h('div', { class: 'topic-actions' },
-      picked.length ? target : null,
-      picked.length ? h('button', {
-        class: 'btn small primary',
-        onclick: async () => {
-          let parent = target.value;
-          if (parent === NEW_TOPIC) parent = await nameDialog('Topic to put them in', '');
-          if (parent) moveTopicsInto(picked, parent);
-        },
-      }, 'Group') : null,
-      h('button', { class: 'btn small', onclick: () => { state.organise = null; renderWords(); } }, 'Done'),
-    ),
-  );
-}
-
 function renderWords() {
   renderVoiceBanner();
   renderCatTabs($('cat-tabs'));
@@ -1812,7 +1761,6 @@ function renderWords() {
   const names = topicNames();
   if (state.openTopic !== null && !names.includes(state.openTopic)) state.openTopic = null;
   if (state.openTopic === null || (state.openSection !== null && !sectionNames(state.openTopic).includes(state.openSection))) state.openSection = null;
-  if (q || state.openTopic !== null) state.organise = null;
   list.className = 'cards';
   const empty = (text) => [h('li', { class: 'empty' }, text)];
 
@@ -1829,16 +1777,9 @@ function renderWords() {
   } else if (state.openTopic === null) {
     // Topic overview: one tile per topic; open a tile to see what is inside.
     const tiles = names.map((t) => [t, base.filter((w) => (w.topic || '') === t).length]).filter(([, n]) => n);
-    if (state.organise) renderOrganiseBar(names);
     list.className = 'cards topics';
     fill(list, 
       ...(tiles.length ? groupedTiles(tiles) : empty('No words in this category yet.')),
-      !state.organise && tiles.length > 1
-        ? h('li', { class: 'organise-row' },
-          h('button', { class: 'link-btn', onclick: () => { state.organise = new Set(); renderWords(); } }, 'Group topics into one…'),
-          ' · ',
-          h('button', { class: 'link-btn', onclick: arrangeByRoadmap }, 'Arrange in A1 grammar order'))
-        : '',
     );
   } else {
     const topic = state.openTopic;
