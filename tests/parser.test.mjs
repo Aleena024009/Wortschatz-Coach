@@ -170,3 +170,11 @@ test('pronunciation in Malayalam letters', () => {
   assert.equal(malayalam('Danke'), 'ഡങ്കെ');
   assert.equal(malayalam('Auf Wiedersehen'), 'ഔഫ് വീഡെർസേയെൻ');
 });
+
+test('a sentence starting with der/die/das is not split into article and noun', () => {
+  const { words } = parseWordList('The clock hangs on the wall. – Die Uhr hängt an der Wand.\nkey – der Schlüssel', [], 'A1', 'en-de');
+  assert.equal(words[0].article, '');
+  assert.equal(words[0].german, 'Die Uhr hängt an der Wand.');
+  assert.equal(words[1].article, 'der');
+  assert.equal(words[1].german, 'Schlüssel');
+});

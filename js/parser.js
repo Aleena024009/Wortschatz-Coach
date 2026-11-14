@@ -39,7 +39,8 @@ export function stripNumbering(text) {
 
 export function splitArticle(german) {
   german = stripNumbering(german);
-  const m = german.match(ARTICLE);
+  // A sentence ("Die Uhr hängt an der Wand.") keeps its first word; only a noun gets split.
+  const m = /[.!?]$/.test(german.trim()) ? null : german.match(ARTICLE);
   return m ? { article: m[1].toLowerCase(), german: m[2].trim() } : { article: '', german: german.trim() };
 }
 
