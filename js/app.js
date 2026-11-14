@@ -1335,6 +1335,75 @@ function moveInPath(topic, section, delta) {
   renderWords();
 }
 
+// The A1 grammar roadmap (40 steps). [step, rule matched against a topic or sub-topic name];
+// the first rule that matches wins, so specific rules come before general ones.
+const A1_ROADMAP = [
+  [22, /fälle|\bcases\b/i],
+  [20, /dativpronomen|dative pronoun|pronomen im dativ|pronouns in the dative/i],
+  [17, /akkusativ-?pronomen|accusative pronoun|pronomen im akkusativ|pronouns in the accusative/i],
+  [13, /possessiv/i],
+  [1, /personalpronomen|personal pronoun|^pronomen|^pronouns/i],
+  [37, /präteritum|simple past/i],
+  [35, /mit sein|with sein/i],
+  [36, /partizip|participle|-ieren|gemischt|mixed verbs/i],
+  [34, /perfekt|past tense|mit haben|with haben/i],
+  [21, /dativverben|dative verbs/i],
+  [18, /akkusativverben|accusative verbs/i],
+  [31, /akkusativpräp|präpositionen mit akkusativ|accusative prep/i],
+  [30, /dativpräp|präpositionen mit dativ|dative prep/i],
+  [32, /wechselpräp|two-way/i],
+  [6, /w-fragen|question words|w-questions/i],
+  [7, /ja-\/nein|ja\/nein|yes\/no/i],
+  [33, /wohin|location|direction/i],
+  [29, /temporal|zeitpräp|time prep|präposition|preposition/i],
+  [23, /modalverb|modal verb/i],
+  [25, /trennbar|separable/i],
+  [26, /imperativ/i],
+  [27, /reflexiv/i],
+  [28, /demonstrativ|interrogativ|dieser|welcher/i],
+  [39, /wortstellung.*konjunktion|word order.*conjunction/i],
+  [40, /satzverbindung|connecting/i],
+  [38, /adosu|konjunktion|conjunction/i],
+  [4, /unregelmäßig|irregular|vokalwechsel|stem.chang/i],
+  [3, /sein und haben|haben und sein|sein & haben|haben & sein/i],
+  [2, /regelmäßig|regular verb|präsens|present tense|konjugation|conjugation/i],
+  [5, /wortstellung|satzbau|sentence structure|word order|verbposition/i],
+  [8, /genus|gender|der,? die,? das/i],
+  [9, /artikel|article/i],
+  [10, /plural/i],
+  [11, /nominativ|nominative/i],
+  [12, /nicht und kein|kein und nicht|negation|verneinung/i],
+  [14, /zeitangaben|time expression|zeitadverb|time adverb|uhrzeit|telling the time|wochentag|days of the week|tageszeit/i],
+  [15, /zahlen|numbers|ordinal|datum|dates|monate|months/i],
+  [16, /akkusativ|accusative/i],
+  [19, /dativ|dative/i],
+  [2, /verben|\bverbs?\b/i],
+];
+
+// Puts names in roadmap order. A name the roadmap doesn't cover (e.g. vocabulary like "Familie")
+// keeps its place right after the item before it.
+function roadmapSort(names) {
+  let last = 0;
+  const ranked = names.map((name, i) => {
+    const hit = A1_ROADMAP.find(([, re]) => re.test(name));
+    if (hit) last = hit[0];
+    return { name, step: hit ? hit[0] : last, i };
+  });
+  return ranked.sort((a, b) => a.step - b.step || a.i - b.i).map((r) => r.name);
+}
+
+// Arranges every topic, and the sub-topics inside each, in the order of the A1 grammar roadmap.
+function arrangeByRoadmap() {
+  if (!confirm('Arrange your topics and sub-topics in A1 grammar order (pronouns and verbs first, past tense and conjunctions last)? This replaces the order you set.')) return;
+  const topics = roadmapSort(topicNames().filter(Boolean));
+  const sections = topics.flatMap((t) => roadmapSort(sectionNames(t).filter(Boolean)).map((sec) => noteKey(t, sec)));
+  const keys = [...topics, ...sections];
+  state.order = [...keys, ...state.order.filter((k) => !keys.includes(k))];
+  saveOrder();
+  renderWords();
+  toast('Topics arranged in A1 grammar order.');
+}
+
 // What comes after this topic or sub-topic in the learning path.
 function nextStep(topic, section) {
   if (section !== null && section !== undefined) {
@@ -1705,7 +1774,10 @@ function renderWords() {
     fill(list, 
       ...(tiles.length ? tiles.map(([t, n]) => topicTile(t, n)) : empty('No words in this category yet.')),
       !state.organise && tiles.length > 1
-        ? h('li', { class: 'organise-row' }, h('button', { class: 'link-btn', onclick: () => { state.organise = new Set(); renderWords(); } }, 'Group topics into one…'))
+        ? h('li', { class: 'organise-row' },
+          h('button', { class: 'link-btn', onclick: () => { state.organise = new Set(); renderWords(); } }, 'Group topics into one…'),
+          ' · ',
+          h('button', { class: 'link-btn', onclick: arrangeByRoadmap }, 'Arrange in A1 grammar order'))
         : '',
     );
   } else {
