@@ -1907,6 +1907,22 @@ function renderAdd() {
   renderTopicPicker('bulk-topic');
 }
 
+// Malayalam for example sentences that changed (the word's own meaning is already there).
+async function translateExamples(words) {
+  if (!navigator.onLine) return;
+  for (const w of words) {
+    if (!w.example || w.example.startsWith('Plural:')) continue;
+    try {
+      w.exampleMl = await toMalayalam(w.example, 'de');
+      saveWords([w]);
+    } catch {
+      // Offline or the service is busy: the edit form can fill it in.
+    }
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  if (state.view === 'words') renderWords();
+}
+
 // New words get their Malayalam meaning (and example) from a free machine translation,
 // one at a time in the background. Edit a card to correct it.
 const mlQueue = [];
@@ -2513,6 +2529,40 @@ function exportBackup() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// A file can bring a newer version of sub-topics you already have (e.g. a corrected list).
+// After you confirm, words in those sub-topics that the file no longer has are removed, and
+// words it still has take the file's example sentence. Returns the topics that were replaced,
+// with `removed` and `updated` counts.
+function replaceOutdated(items) {
+  const replaced = new Set();
+  replaced.removed = 0;
+  replaced.updated = 0;
+  const fromFile = new Map(items.map((w) => [normalizeKey(w.article || '', w.german, w.english), w]));
+  const places = new Set(items.filter((w) => w.topic).map((w) => noteKey(w.topic, w.subtopic || '')));
+  const mine = state.words.filter((w) => w.topic && places.has(noteKey(w.topic, w.subtopic || '')));
+  const keyOf = (w) => normalizeKey(w.article, w.german, w.english);
+  const outdated = mine.filter((w) => !fromFile.has(keyOf(w)));
+  const changed = mine.filter((w) => fromFile.has(keyOf(w)) && (fromFile.get(keyOf(w)).example || '') !== (w.example || ''));
+  if (!outdated.length && !changed.length) return replaced;
+  const names = [...new Set([...outdated, ...changed].map((w) => topicGerman(w.subtopic || w.topic) || w.subtopic || w.topic))];
+  const sample = outdated.slice(0, 3).map((w) => `• ${fullGerman(w)}`).join('\n');
+  const parts = [
+    outdated.length ? `Remove ${plural(outdated.length, 'old word')} that ${outdated.length === 1 ? 'is' : 'are'} no longer in it${sample ? `:\n${sample}${outdated.length > 3 ? '\n…' : ''}` : ''}` : '',
+    changed.length ? `Update the example sentence of ${plural(changed.length, 'word')}` : '',
+  ].filter(Boolean);
+  if (!confirm(`This file has a newer version of ${names.join(', ')}.\n\n${parts.join('\n\n')}\n\nOK = use the file's version.`)) return replaced;
+  const gone = new Set(outdated);
+  state.words = state.words.filter((w) => !gone.has(w));
+  outdated.forEach((w) => { w.deleted = true; replaced.add(w.topic); });
+  state.tombstones.push(...outdated);
+  changed.forEach((w) => { w.example = fromFile.get(keyOf(w)).example || ''; delete w.exampleMl; replaced.add(w.topic); });
+  saveWords([...outdated, ...changed]);
+  translateExamples(changed);
+  replaced.removed = outdated.length;
+  replaced.updated = changed.length;
+  return replaced;
+}
+
 async function importBackup(file) {
   try {
     const data = JSON.parse(await file.text());
@@ -2521,11 +2571,14 @@ async function importBackup(file) {
     const items = data.words
       .filter((w) => w && typeof w.german === 'string' && typeof w.english === 'string')
       .map(({ id, added, audio: _audio, ...w }) => w);
+    const replaced = replaceOutdated(items);
     const { added, duplicates } = addWords(items);
-    // Rules and tips from the file fill only topics that have none, so your own notes stay as they are.
+    // Rules and tips from the file fill only topics that have none, so your own notes stay as they are,
+    // unless you chose to replace those topics with the file's version.
     let notesAdded = 0;
     for (const [key, text] of Object.entries(data.notes && typeof data.notes === 'object' ? data.notes : {})) {
-      if (typeof text !== 'string' || !text.trim() || state.notes[key]) continue;
+      const renewed = replaced.has(key.split(' › ')[0]);
+      if (typeof text !== 'string' || !text.trim() || (state.notes[key] && !renewed) || state.notes[key] === text.trim()) continue;
       state.notes[key] = text.trim();
       notesAdded++;
     }
@@ -2539,7 +2592,7 @@ async function importBackup(file) {
       saveOrder();
       renderWords();
     }
-    toast(`Imported ${plural(added, 'word')}${notesAdded ? ` and ${plural(notesAdded, 'set')} of rules and tips` : ''}${duplicates ? `, skipped ${duplicates} duplicates` : ''}.`);
+    toast(`Imported ${plural(added, 'word')}${replaced.removed ? `, removed ${plural(replaced.removed, 'old word')}` : ''}${replaced.updated ? `, updated ${plural(replaced.updated, 'example')}` : ''}${notesAdded ? ` and ${plural(notesAdded, 'set')} of rules and tips` : ''}${duplicates ? `, skipped ${duplicates} duplicates` : ''}.`);
   } catch {
     toast('That file is not a Wortschatz Coach backup.');
   }
