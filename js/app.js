@@ -1270,8 +1270,9 @@ function toggleTopicPart(sec) {
 }
 
 // Topic tiles under the A1 plan's headings (1. Grundlagen, 2. Nomen…), when any topic is grammar.
-// Tap a heading to fold its topics away or open them again.
-function groupedTiles(tiles) {
+// Tap a heading to fold its topics away or open them again. A part with just one topic (Die Fälle)
+// shows that topic's sub-topics straight away (Nominativ, Akkusativ, Dativ…).
+function groupedTiles(tiles, base = []) {
   const grouped = tiles.some(([t]) => t && topicSection(t) > 0);
   if (!grouped) return tiles.map(([t, n]) => topicTile(t, n));
   const opened = openParts();
@@ -1280,10 +1281,17 @@ function groupedTiles(tiles) {
     const sec = t ? topicSection(t) : -1;
     const head = t && sec !== current;
     current = sec;
-    const tile = t && !opened.includes(sec) ? [] : [topicTile(t, n)];
+    const alone = t && sec > 0 && tiles.filter(([o]) => o && topicSection(o) === sec).length === 1;
+    const subs = alone ? sectionNames(t).filter(Boolean)
+      .map((sub) => [sub, base.filter((w) => w.topic === t && w.subtopic === sub).length]).filter(([, c]) => c) : [];
+    const loose = alone && base.some((w) => w.topic === t && !w.subtopic);
+    const inner = subs.length && !loose
+      ? subs.map(([sub, c], i) => folderTile(sub, plural(c, 'word'), () => openTopic(t, sub), null, t, i + 1))
+      : [topicTile(t, n)];
+    const tile = t && !opened.includes(sec) ? [] : inner;
     if (!head) return tile;
     const [, german, english] = A1_SECTIONS[sec];
-    const count = tiles.filter(([o]) => o && topicSection(o) === sec).length;
+    const count = subs.length && !loose ? subs.length : tiles.filter(([o]) => o && topicSection(o) === sec).length;
     const open = opened.includes(sec);
     return [h('li', { class: `path-section${open ? '' : ' folded'}` },
       h('button', { class: 'path-toggle', 'aria-expanded': String(open), onclick: () => toggleTopicPart(sec),
@@ -1784,7 +1792,7 @@ function renderWords() {
     const tiles = names.map((t) => [t, base.filter((w) => (w.topic || '') === t).length]).filter(([, n]) => n);
     list.className = 'cards topics';
     fill(list, 
-      ...(tiles.length ? groupedTiles(tiles) : empty('No words in this category yet.')),
+      ...(tiles.length ? groupedTiles(tiles, base) : empty('No words in this category yet.')),
     );
   } else {
     const topic = state.openTopic;
