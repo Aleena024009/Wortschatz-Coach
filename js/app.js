@@ -1084,6 +1084,7 @@ function onCloudWords({ records, isFirst, fromCache, unstamped, newest }) {
   const restamp = full ? unstamped.filter((w) => !uploading.has(w.id)).map((w) => merged.find((m) => m.id === w.id) || w) : [];
   applyRecords(merged);
   persist(db.replaceAllWords(merged));
+  if (mergeRepeatedTopics()) { sortWords(); refresh(); }
   if (toUpload.length || restamp.length) cloudSave(cloud.saveWords(state.user.uid, [...toUpload, ...restamp]));
   saveCheckpoint(newest, fromCache);
   setSyncStatus(fromCache ? 'Offline: changes will sync when you are back online.' : `Up to date · ${plural(state.words.length, 'word')} in your account.`);
@@ -2807,6 +2808,66 @@ function repairNumberedWords() {
   saveWords(fixed);
 }
 
+// Older lists had Der Akkusativ, Der Dativ, Akkusativpräpositionen and Dativpräpositionen as topics of
+// their own, so the same grammar showed up twice. Their words move into Die Fälle and Präpositionen,
+// and a card that is then exactly the same as another in its sub-topic is removed.
+const MERGED_TOPICS = [
+  { from: /\bder akkusativ\b|^accusative case\b/i, into: /die fälle|^the cases\b/i, intoName: 'The Cases – Die Fälle', sub: () => 'Accusative – Akkusativ' },
+  { from: /\bder dativ\b|^dative case\b/i, into: /die fälle|^the cases\b/i, intoName: 'The Cases – Die Fälle',
+    sub: (s) => (/pronom/i.test(s) ? 'Dative pronouns – Dativpronomen' : /verb/i.test(s) ? 'Dative verbs – Dativverben' : 'Dative – Dativ') },
+  { from: /akkusativpräpositionen|^accusative prepositions\b/i, into: /^prepositions\b|(^|– )präpositionen$/i, intoName: 'Prepositions – Präpositionen',
+    sub: (s) => (/übung|practice/i.test(s) ? 'Accusative practice – Übungssätze mit Akkusativ' : 'With the accusative – Präpositionen mit Akkusativ') },
+  { from: /dativpräpositionen|^dative prepositions\b/i, into: /^prepositions\b|(^|– )präpositionen$/i, intoName: 'Prepositions – Präpositionen',
+    sub: () => 'With the dative – Präpositionen mit Dativ' },
+];
+
+function mergeRepeatedTopics() {
+  const topics = new Set(state.words.map((w) => w.topic).filter(Boolean));
+  const moved = [];
+  for (const rule of MERGED_TOPICS) {
+    const into = [...topics].find((t) => rule.into.test(t) && !rule.from.test(t)) || rule.intoName;
+    for (const w of state.words) {
+      if (!w.topic || !rule.from.test(w.topic) || rule.into.test(w.topic)) continue;
+      const oldKey = noteKey(w.topic, w.subtopic || '');
+      w.topic = into;
+      w.subtopic = rule.sub(w.subtopic || '');
+      const newKey = noteKey(w.topic, w.subtopic);
+      if (state.notes[oldKey] && !state.notes[newKey]) state.notes[newKey] = state.notes[oldKey];
+      moved.push(w);
+    }
+  }
+  // New sub-topics join the learning path in this order (Dativ, then its pronouns, then its verbs).
+  const subOrder = ['Accusative – Akkusativ', 'Dative – Dativ', 'Dative pronouns – Dativpronomen', 'Dative verbs – Dativverben',
+    'With the accusative – Präpositionen mit Akkusativ', 'Accusative practice – Übungssätze mit Akkusativ', 'With the dative – Präpositionen mit Dativ'];
+  const newKeys = [...new Set(moved.map((w) => noteKey(w.topic, w.subtopic)))].filter((k) => !state.order.includes(k));
+  newKeys.sort((a, b) => subOrder.indexOf(a.split(' › ')[1]) - subOrder.indexOf(b.split(' › ')[1]));
+  if (newKeys.length) {
+    state.order.push(...newKeys);
+    saveOrder();
+  }
+  // The same card twice in one topic (same German, same first meaning): keep one, preferring the
+  // one in a sub-topic with an example. Die Fälle keeps its pronoun tables (uns, euch are in both).
+  const meaning = (w) => (w.english || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/^to\s+/, '').split(/[,;/\s]+/).filter(Boolean)[0] || '';
+  const german = (w) => `${w.article || ''} ${w.german}`.trim().replace(/[.!?]+$/, '');
+  const kept = new Map();
+  const gone = [];
+  const rank = (w) => (w.subtopic ? 2 : 0) + (w.example ? 1 : 0);
+  for (const w of [...state.words].sort((a, b) => rank(b) - rank(a))) {
+    const key = [w.topic || '', german(w), meaning(w)].join(SEP);
+    const twins = kept.get(key) || [];
+    if (twins.length && !/fälle/i.test(w.topic)) gone.push(w);
+    else kept.set(key, [...twins, w]);
+  }
+  if (!moved.length && !gone.length) return false;
+  gone.forEach((w) => { w.deleted = true; });
+  const goneIds = new Set(gone.map((w) => w.id));
+  state.words = state.words.filter((w) => !goneIds.has(w.id));
+  state.tombstones.push(...gone);
+  saveWords([...moved.filter((w) => !goneIds.has(w.id)), ...gone]);
+  if (moved.length) saveNotes();
+  return true;
+}
+
 // ---------- wiring ----------
 
 function onKey(e) {
@@ -2855,6 +2916,7 @@ async function init() {
   state.hd.ready = await hd.isDownloaded();
   applyTheme();
   repairNumberedWords();
+  mergeRepeatedTopics();
   sortWords();
 
   document.querySelectorAll('.nav button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
