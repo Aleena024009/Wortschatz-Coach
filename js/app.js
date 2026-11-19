@@ -2567,10 +2567,61 @@ function replaceOutdated(items) {
   return replaced;
 }
 
+// A cleaned copy of your own backup (marked "replace": true) makes your list exactly like the file:
+// words it no longer has are removed, words it changed are updated (topic, sub-topic, example …),
+// and its rules and tips and learning path replace yours. Asks first. Returns false if cancelled.
+const REPLACE_FIELDS = ['german', 'article', 'english', 'example', 'exampleMl', 'malayalam', 'topic', 'subtopic', 'level', 'pos', 'forms'];
+function replaceList(data) {
+  const fromFile = new Map(data.words.filter((w) => w && w.id && typeof w.german === 'string').map((w) => [w.id, w]));
+  // A word whose id differs (e.g. this list came from an older import) is matched by its German and English.
+  const keyOf = (w) => normalizeKey(w.article || '', w.german, w.english);
+  const mine = new Map(state.words.filter((w) => !fromFile.has(w.id)).map((w) => [keyOf(w), w]));
+  for (const [id, f] of [...fromFile]) {
+    const match = !state.words.some((w) => w.id === id) && mine.get(keyOf(f));
+    if (!match) continue;
+    mine.delete(keyOf(f));
+    fromFile.delete(id);
+    fromFile.set(match.id, { ...f, id: match.id });
+  }
+  const gone = state.words.filter((w) => !fromFile.has(w.id));
+  const changed = state.words.filter((w) => {
+    const f = fromFile.get(w.id);
+    return f && REPLACE_FIELDS.some((k) => JSON.stringify(f[k] ?? '') !== JSON.stringify(w[k] ?? ''));
+  });
+  const ids = new Set(state.words.map((w) => w.id));
+  const fresh = [...fromFile.values()].filter((w) => !ids.has(w.id));
+  if (!confirm(`Make your list exactly like this cleaned file?\n\n• ${plural(gone.length, 'word')} removed (repeats)\n• ${plural(changed.length, 'word')} moved or updated\n• ${plural(fresh.length, 'new word')}\n• Rules and tips and the topic order replaced\n\nCancel = only add new words.`)) return false;
+  gone.forEach((w) => { w.deleted = true; });
+  state.words = state.words.filter((w) => fromFile.has(w.id));
+  state.tombstones.push(...gone);
+  changed.forEach((w) => {
+    const f = fromFile.get(w.id);
+    REPLACE_FIELDS.forEach((k) => { if (f[k] === undefined) delete w[k]; else w[k] = f[k]; });
+  });
+  const added = fresh.map(({ audio: _audio, ...w }) => ({ ...w, deleted: false }));
+  state.words.push(...added);
+  sortWords();
+  saveWords([...gone, ...changed, ...added]);
+  translateExamples(changed.filter((w) => w.example && !w.exampleMl));
+  fillMalayalam(added);
+  if (data.notes && typeof data.notes === 'object') {
+    state.notes = Object.fromEntries(Object.entries(data.notes).filter(([, t]) => typeof t === 'string' && t.trim()));
+    saveNotes();
+  }
+  if (Array.isArray(data.order)) {
+    state.order = data.order.filter((k) => typeof k === 'string');
+    saveOrder();
+  }
+  refresh();
+  toast(`Your list now matches the file: ${plural(gone.length, 'repeat')} removed, ${plural(changed.length, 'word')} updated.`);
+  return true;
+}
+
 async function importBackup(file) {
   try {
     const data = JSON.parse(await file.text());
     if (data.app !== 'wortschatz-coach' || !Array.isArray(data.words)) throw new Error('bad file');
+    if (data.replace === true && replaceList(data)) return;
     ensureCategories((data.categories || []).map((c) => String(c.name || '')));
     const items = data.words
       .filter((w) => w && typeof w.german === 'string' && typeof w.english === 'string')
