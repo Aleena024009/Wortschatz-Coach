@@ -1486,6 +1486,36 @@ const noteKey = (topic, section) => (section ? `${topic} › ${section}` : topic
 
 const isYouTube = (url) => /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.test(url);
 
+// On a phone every YouTube link opens in the YouTube app when it is installed, not in a browser tab
+// inside this app. Android: an intent link with the website as fallback. iPhone/iPad: youtube://,
+// and the website if the app did not open within a moment. Computers keep the normal new tab.
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+const IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+function youTubeAppLink(href) {
+  const url = new URL(href);
+  // youtu.be/ID → youtube.com/watch?v=ID, which both apps understand.
+  const path = url.host === 'youtu.be' ? `/watch?v=${url.pathname.slice(1)}${url.search.replace(/^\?/, '&')}` : url.pathname + url.search;
+  const web = `https://www.youtube.com${path}`;
+  if (IS_ANDROID) return { app: `intent://www.youtube.com${path}#Intent;scheme=https;package=com.google.android.youtube;S.browser_fallback_url=${encodeURIComponent(web)};end`, web };
+  return { app: `youtube://www.youtube.com${path}`, web };
+}
+
+function openInYouTubeApp(e) {
+  const a = e.target.closest?.('a[href]');
+  if (!a || !isYouTube(a.href) || !(IS_ANDROID || IS_IOS) || e.button > 0 || e.ctrlKey || e.metaKey) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const { app, web } = youTubeAppLink(a.href);
+  if (IS_ANDROID) {
+    location.href = app;
+    return;
+  }
+  const fallback = setTimeout(() => { if (!document.hidden) location.href = web; }, 1500);
+  document.addEventListener('visibilitychange', () => clearTimeout(fallback), { once: true });
+  location.href = app;
+}
+
 // Videos for each topic, all from the YourGermanTeacher channel.
 // [rule matched against the topic / sub-topic name, video]; each video is [id, title] or null. The first rule that matches wins, so specific ones come first.
 // A YouTube link in the topic's own rules and tips still wins for the tile button.
@@ -3021,6 +3051,7 @@ async function init() {
   swipeCards($('quiz'), (dir) => dir !== -1 && !!state.quiz?.picked && state.quiz.index < state.quiz.queue.length, () => nextQuiz());
   $('fc-shuffle').addEventListener('click', toggleShuffle);
   document.addEventListener('keydown', onKey);
+  document.addEventListener('click', openInYouTubeApp, true);
 
   $('voice-select').addEventListener('change', (e) => {
     settings.voiceURI = e.target.value;
