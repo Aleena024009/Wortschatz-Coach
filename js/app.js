@@ -453,7 +453,17 @@ function topicNames() {
 function sectionNames(topic) {
   return [...new Set(state.words.filter((w) => (w.topic || '') === topic).map((w) => w.subtopic || ''))]
     .sort(byOrder((sec) => noteKey(topic, sec)))
-    .sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1));
+    .sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1) || (CASES_TOPIC.test(topic) ? caseRank(a) - caseRank(b) : 0));
+}
+
+// Die Fälle in A1 order: everything Nominativ, then Akkusativ, then Dativ. Inside each case:
+// the case itself, its pronouns, its possessives, then its verbs.
+const CASES_TOPIC = /die fälle|^the cases\b/i;
+function caseRank(sub) {
+  if (!sub) return 99;
+  const kase = /genitiv/i.test(sub) ? 3 : /dativ|dative/i.test(sub) ? 2 : /akkusativ|accusative/i.test(sub) ? 1 : 0;
+  const kind = /possess/i.test(sub) ? 2 : /pronom|pronoun/i.test(sub) ? 1 : /verb/i.test(sub) ? 3 : 0;
+  return kase * 10 + kind;
 }
 
 // The practice filter is either a topic or "topic SEP section".
@@ -2891,7 +2901,8 @@ function mergeRepeatedTopics() {
     saveOrder();
   }
   // The same card twice in one topic (same German, same first meaning): keep one, preferring the
-  // one in a sub-topic with an example. Die Fälle keeps its pronoun tables (uns, euch are in both).
+  // one in a sub-topic with an example. In Die Fälle only a repeat in the same sub-topic goes: its
+  // pronoun tables share words on purpose (uns, euch are both Akkusativ and Dativ).
   const meaning = (w) => (w.english || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/^to\s+/, '').split(/[,;/\s]+/).filter(Boolean)[0] || '';
   const german = (w) => `${w.article || ''} ${w.german}`.trim().replace(/[.!?]+$/, '');
   const kept = new Map();
@@ -2900,7 +2911,7 @@ function mergeRepeatedTopics() {
   for (const w of [...state.words].sort((a, b) => rank(b) - rank(a))) {
     const key = [w.topic || '', german(w), meaning(w)].join(SEP);
     const twins = kept.get(key) || [];
-    if (twins.length && !/fälle/i.test(w.topic)) gone.push(w);
+    if (twins.some((t) => !CASES_TOPIC.test(w.topic) || t.subtopic === w.subtopic)) gone.push(w);
     else kept.set(key, [...twins, w]);
   }
   // The A2–B2 verbs from the "Verben mit Dativ" sheet were added by mistake: only its A1 verbs are kept.
@@ -2915,6 +2926,40 @@ function mergeRepeatedTopics() {
   saveWords([...moved.filter((w) => !goneIds.has(w.id)), ...gone]);
   if (moved.length) saveNotes();
   return true;
+}
+
+// All 14 A1 verbs of the "Verben mit Dativ" sheet belong in Die Fälle › Dativverben. Added once per
+// device; a copy that arrives from another device is removed again as a repeat.
+const A1_DATIVE_VERBS = [
+  ['absagen', 'to cancel (on someone)', 'Ich muss dir für morgen absagen.'],
+  ['antworten', 'to answer, to reply (to someone)', 'Er antwortet dem Lehrer.'],
+  ['danken', 'to thank', 'Ich danke dir.'],
+  ['fehlen', 'to be missed by', 'Du fehlst mir!'],
+  ['gefallen', 'to please, to be liked', 'Gefällt dir mein Hemd?'],
+  ['gehören', 'to belong to', 'Das Haus gehört meiner Mutter.'],
+  ['glauben', 'to believe', 'Ich glaube dir.'],
+  ['gratulieren', 'to congratulate', 'Ich gratuliere dir zum Geburtstag.'],
+  ['helfen', 'to help (someone)', 'Wir helfen den alten Leuten.'],
+  ['passieren', 'to happen (to someone)', 'Was ist dir passiert?'],
+  ['raten', 'to advise', 'Ich rate dir, im Bett zu bleiben.'],
+  ['schmecken', 'to taste (good)', 'Die Suppe schmeckt mir.'],
+  ['wehtun', 'to hurt', 'Das Bein tut ihm weh.'],
+  ['zuhören', 'to listen (to someone)', 'Die Schüler hören dem Professor zu.'],
+];
+function addA1DativeVerbs() {
+  try { if (localStorage.getItem('wc.a1DativeVerbs')) return; } catch { return; }
+  const topic = topicNames().find((t) => CASES_TOPIC.test(t));
+  if (!topic) return;
+  const sub = sectionNames(topic).find((s) => /dativverb|dative verb/i.test(s)) || 'Dative verbs – Dativverben';
+  const have = new Set(state.words.filter((w) => w.topic === topic && w.subtopic === sub).map((w) => w.german.toLowerCase()));
+  const items = A1_DATIVE_VERBS.filter(([g]) => !have.has(g)).map(([german, english, example]) => ({
+    german, article: '', english, example, level: 'A1', pos: 'verb', topic, subtopic: sub,
+  }));
+  if (items.length) {
+    addWords(items);
+    fillMalayalam(state.words.filter((w) => w.topic === topic && w.subtopic === sub && !w.malayalam));
+  }
+  try { localStorage.setItem('wc.a1DativeVerbs', '1'); } catch { /* storage blocked */ }
 }
 
 // ---------- wiring ----------
@@ -2966,6 +3011,7 @@ async function init() {
   applyTheme();
   repairNumberedWords();
   mergeRepeatedTopics();
+  addA1DativeVerbs();
   sortWords();
 
   document.querySelectorAll('.nav button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
