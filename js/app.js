@@ -2860,6 +2860,12 @@ const MERGED_TOPICS = [
     sub: () => 'With the dative – Präpositionen mit Dativ' },
 ];
 
+const NOT_A1_DATIVE_VERBS = new Set(['auffallen', 'erlauben', 'erscheinen', 'folgen', 'hinterherlaufen', 'nachlaufen', 'vertrauen',
+  'verzeihen', 'widersprechen', 'zusagen', 'zustimmen', 'abraten', 'begegnen', 'dienen', 'drohen', 'einfallen', 'entgegengehen',
+  'entgegenfahren', 'entgegenkommen', 'entsprechen', 'erwidern', 'gelingen', 'genügen', 'nützen', 'trauen', 'winken', 'zusehen',
+  'sich zuwenden', 'ähneln', 'ausweichen', 'entfallen', 'entfliehen', 'entgegnen', 'schmeicheln', 'unterliegen', 'vergeben',
+  'vorausgehen', 'widerstehen', 'zuvorkommen']);
+
 function mergeRepeatedTopics() {
   const topics = new Set(state.words.map((w) => w.topic).filter(Boolean));
   const moved = [];
@@ -2896,6 +2902,10 @@ function mergeRepeatedTopics() {
     const twins = kept.get(key) || [];
     if (twins.length && !/fälle/i.test(w.topic)) gone.push(w);
     else kept.set(key, [...twins, w]);
+  }
+  // The A2–B2 verbs from the "Verben mit Dativ" sheet were added by mistake: only its A1 verbs are kept.
+  for (const w of state.words) {
+    if (/dativverb/i.test(w.subtopic || '') && w.level && w.level !== 'A1' && NOT_A1_DATIVE_VERBS.has(w.german) && !gone.includes(w)) gone.push(w);
   }
   if (!moved.length && !gone.length) return false;
   gone.forEach((w) => { w.deleted = true; });
