@@ -2665,7 +2665,8 @@ async function importBackup(file) {
     const items = data.words
       .filter((w) => w && typeof w.german === 'string' && typeof w.english === 'string')
       .map(({ id, added, audio: _audio, ...w }) => w);
-    const replaced = replaceOutdated(items);
+    // A file marked "addOnly": true only adds words to a sub-topic; it never offers to remove the ones you have.
+    const replaced = data.addOnly === true ? Object.assign(new Set(), { removed: 0, updated: 0 }) : replaceOutdated(items);
     const { added, duplicates } = addWords(items);
     // Rules and tips from the file fill only topics that have none, so your own notes stay as they are,
     // unless you chose to replace those topics with the file's version.
